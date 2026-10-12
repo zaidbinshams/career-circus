@@ -72,7 +72,6 @@ type ApplicationBase = {
     companyName: string;
     role: string;
     createdAt: string;
-    updatedAt: string;
 };
 
 /**
@@ -136,3 +135,10 @@ export type OffCampusApplication =
 export type Application =
     | CollegePlacementApplication
     | OffCampusApplication;
+
+type WithoutSystemFields<T> = T extends Application
+    ? Omit<T, "id" | "createdAt">
+    : never;
+
+export type ApplicationDraft =
+    WithoutSystemFields<Application>;
