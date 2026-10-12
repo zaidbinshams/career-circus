@@ -17,11 +17,13 @@ import {
   Sun,
   Upload,
   Users,
+  X,
   type LucideIcon,
 } from "lucide-react";
 
 import type {
   Application,
+  ApplicationDraft,
   ApplicationSection,
   Compensation,
   RoleType,
@@ -35,8 +37,10 @@ import {
   ROLE_TYPES,
 } from "./utils/applicationValidation";
 
+import { createValidatedApplication } from "./utils/applicationService";
 import { sampleApplications } from "./data/sampleApplications";
 import { formatCompensation } from "./utils/compensation";
+import ApplicationForm from "./components/ApplicationForm";
 import "./App.css";
 
 type ThemeMode = "light" | "dark";
@@ -102,11 +106,9 @@ function readSavedTheme(): ThemeMode {
 function readPreferences(): SectionPreferences {
   try {
     const saved = localStorage.getItem("career-circus-preferences");
-
     if (!saved) return DEFAULT_PREFERENCES;
 
     const parsed: unknown = JSON.parse(saved);
-
     if (typeof parsed !== "object" || parsed === null) {
       return DEFAULT_PREFERENCES;
     }
@@ -129,10 +131,7 @@ function readPreferences(): SectionPreferences {
 
     let defaultSection: ApplicationSection;
 
-    if (
-      value.defaultSection === "off-campus" &&
-      showOffCampus
-    ) {
+    if (value.defaultSection === "off-campus" && showOffCampus) {
       defaultSection = "off-campus";
     } else if (showCollegePlacements) {
       defaultSection = "college-placement";
@@ -157,7 +156,7 @@ function savePreferences(preferences: SectionPreferences) {
       JSON.stringify(preferences),
     );
   } catch {
-    // Preferences remain usable during this session.
+    // Preferences remain usable during the current session.
   }
 }
 
@@ -193,7 +192,6 @@ function compareCompensation(
   const first = amountForSort(a);
   const second = amountForSort(b);
 
-  // Keep TBD and NA at the bottom in both sort directions.
   if (first === null && second === null) return 0;
   if (first === null) return 1;
   if (second === null) return -1;
@@ -215,7 +213,6 @@ function MetricCard({
       <div className="metric-icon">
         <Icon size={19} strokeWidth={1.8} />
       </div>
-
       <div className="metric-content">
         <p>{label}</p>
         <strong>{value}</strong>
@@ -224,11 +221,7 @@ function MetricCard({
   );
 }
 
-function CompanyCell({
-  application,
-}: {
-  application: Application;
-}) {
+function CompanyCell({ application }: { application: Application }) {
   return (
     <div className="company-cell">
       <span className="company-name">{application.companyName}</span>
@@ -237,11 +230,7 @@ function CompanyCell({
   );
 }
 
-function ApplicationCard({
-  application,
-}: {
-  application: Application;
-}) {
+function ApplicationCard({ application }: { application: Application }) {
   return (
     <article className="application-card">
       <div className="application-card-heading">
@@ -249,26 +238,16 @@ function ApplicationCard({
           <h3>{application.companyName}</h3>
           <p className="role-name">{application.role}</p>
         </div>
-
-        <time
-          className="added-date"
-          dateTime={application.createdAt}
-        >
+        <time className="added-date" dateTime={application.createdAt}>
           {formatDate(application.createdAt)}
         </time>
       </div>
 
       <div className="card-tags">
-        <span className="type-pill">
-          {formatLabel(application.roleType)}
-        </span>
-
-        <span
-          className={`status-pill status-pill--${application.status ?? "unset"}`}
-        >
+        <span className="type-pill">{formatLabel(application.roleType)}</span>
+        <span className={`status-pill status-pill--${application.status ?? "unset"}`}>
           {formatLabel(application.status)}
         </span>
-
         <span className="stage-pill">
           {formatLabel(application.reachedStage)}
         </span>
@@ -278,22 +257,13 @@ function ApplicationCard({
         <div>
           <span>Stipend</span>
           <strong>
-            {formatCompensation(
-              application.stipend,
-              "stipend",
-              application.currency,
-            )}
+            {formatCompensation(application.stipend, "stipend", application.currency)}
           </strong>
         </div>
-
         <div>
           <span>CTC</span>
           <strong>
-            {formatCompensation(
-              application.ctc,
-              "ctc",
-              application.currency,
-            )}
+            {formatCompensation(application.ctc, "ctc", application.currency)}
           </strong>
         </div>
       </div>
@@ -305,11 +275,14 @@ function App() {
   const [theme, setTheme] = useState<ThemeMode>(readSavedTheme);
   const [preferences, setPreferences] =
     useState<SectionPreferences>(readPreferences);
+  const [applications, setApplications] =
+    useState<Application[]>(sampleApplications);
 
   const [activeSection, setActiveSection] =
     useState<ApplicationSection>(() => preferences.defaultSection);
 
   const [showPreferences, setShowPreferences] = useState(false);
+  const [showApplicationForm, setShowApplicationForm] = useState(false);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] =
     useState<RoleType | "all">("all");
@@ -319,7 +292,14 @@ function App() {
     useState<SortOption>("date-desc");
   const [view, setView] = useState<ViewMode>("list");
 
-  const sectionApplications = sampleApplications.filter(
+  const visibleSections: ApplicationSection[] = [
+    ...(preferences.showCollegePlacements
+      ? (["college-placement"] as const)
+      : []),
+    ...(preferences.showOffCampus ? (["off-campus"] as const) : []),
+  ];
+
+  const sectionApplications = applications.filter(
     (application) => application.section === activeSection,
   );
 
@@ -341,57 +321,37 @@ function App() {
         application.companyName.toLocaleLowerCase().includes(query) ||
         application.role.toLocaleLowerCase().includes(query);
 
-      const matchesRole =
-        roleFilter === "all" ||
-        application.roleType === roleFilter;
-
-      const matchesStatus =
-        statusFilter === "all" ||
-        application.status === statusFilter;
-
-      const matchesStage =
-        stageFilter === "all" ||
-        application.reachedStage === stageFilter;
-
       return (
         matchesSearch &&
-        matchesRole &&
-        matchesStatus &&
-        matchesStage
+        (roleFilter === "all" || application.roleType === roleFilter) &&
+        (statusFilter === "all" || application.status === statusFilter) &&
+        (stageFilter === "all" || application.reachedStage === stageFilter)
       );
     })
     .sort((a, b) => {
       switch (sortBy) {
         case "date-asc":
           return Date.parse(a.createdAt) - Date.parse(b.createdAt);
-
         case "date-desc":
           return Date.parse(b.createdAt) - Date.parse(a.createdAt);
-
         case "company-asc":
           return a.companyName.localeCompare(b.companyName, "en-US");
-
         case "company-desc":
           return b.companyName.localeCompare(a.companyName, "en-US");
-
         case "stipend-asc":
           return compareCompensation(a.stipend, b.stipend, false);
-
         case "stipend-desc":
           return compareCompensation(a.stipend, b.stipend, true);
-
         case "ctc-asc":
           return compareCompensation(a.ctc, b.ctc, false);
-
         case "ctc-desc":
           return compareCompensation(a.ctc, b.ctc, true);
-
         default:
           return 0;
       }
     });
 
-  // The overview metrics are provisional and will be revisited.
+  // These overview metrics are provisional and will be revisited.
   const metrics = [
     {
       label: "Total applications",
@@ -400,24 +360,18 @@ function App() {
     },
     {
       label: "Applied",
-      value: sectionApplications.filter(
-        (application) => application.status === "applied",
-      ).length,
+      value: sectionApplications.filter((app) => app.status === "applied").length,
       icon: Send,
     },
     {
       label: "Interviews",
-      value: sectionApplications.filter(
-        (application) => application.reachedStage === "interview",
-      ).length,
+      value: sectionApplications.filter((app) => app.reachedStage === "interview").length,
       icon: Users,
     },
     {
       label: "Offers",
       value: sectionApplications.filter(
-        (application) =>
-          application.status === "placed" ||
-          application.reachedStage === "offer",
+        (app) => app.status === "placed" || app.reachedStage === "offer",
       ).length,
       icon: Award,
     },
@@ -430,9 +384,7 @@ function App() {
     stageFilter !== "all";
 
   function toggleTheme() {
-    const nextTheme: ThemeMode =
-      theme === "light" ? "dark" : "light";
-
+    const nextTheme: ThemeMode = theme === "light" ? "dark" : "light";
     setTheme(nextTheme);
 
     try {
@@ -465,12 +417,8 @@ function App() {
           : preferences.showOffCampus,
     };
 
-    // At least one section must remain enabled.
-    if (!next.showCollegePlacements && !next.showOffCampus) {
-      return;
-    }
+    if (!next.showCollegePlacements && !next.showOffCampus) return;
 
-    // The default section must be visible.
     if (
       next.defaultSection === "college-placement" &&
       !next.showCollegePlacements
@@ -487,12 +435,10 @@ function App() {
     savePreferences(next);
 
     if (section === activeSection && !visible) {
-      setActiveSection(
-        section === "college-placement"
-          ? "off-campus"
-          : "college-placement",
-      );
+      const fallbackSection =
+        section === "college-placement" ? "off-campus" : "college-placement";
 
+      setActiveSection(fallbackSection);
       setRoleFilter("all");
       setStatusFilter("all");
       setStageFilter("all");
@@ -500,27 +446,29 @@ function App() {
   }
 
   function updateDefaultSection(section: ApplicationSection) {
-    if (
-      section === "college-placement" &&
-      !preferences.showCollegePlacements
-    ) {
-      return;
-    }
+    if (!visibleSections.includes(section)) return;
 
-    if (
-      section === "off-campus" &&
-      !preferences.showOffCampus
-    ) {
-      return;
-    }
-
-    const next: SectionPreferences = {
-      ...preferences,
-      defaultSection: section,
-    };
-
+    const next = { ...preferences, defaultSection: section };
     setPreferences(next);
     savePreferences(next);
+  }
+
+  function handleCreateApplication(draft: ApplicationDraft): string[] | void {
+    const result = createValidatedApplication(draft);
+
+    if (!result.success) {
+      return result.errors;
+    }
+
+    setApplications((current) => [...current, result.application]);
+    setActiveSection(result.application.section);
+    setRoleFilter("all");
+    setStatusFilter("all");
+    setStageFilter("all");
+    setSearch("");
+    setShowApplicationForm(false);
+
+    return;
   }
 
   function resetFilters() {
@@ -533,18 +481,13 @@ function App() {
   return (
     <div className="app-shell" data-theme={theme}>
       <header className="sidebar">
-        <a
-          className="brand"
-          href="#main-content"
-          aria-label="Career Circus home"
-        >
+        <a className="brand" href="#main-content" aria-label="Career Circus home">
           <span className="wordmark">career circus</span>
         </a>
 
         <nav className="sidebar-nav" aria-label="Main navigation">
           <button
-            className={`nav-item ${!showPreferences ? "nav-item--active" : ""
-              }`}
+            className={`nav-item ${!showPreferences ? "nav-item--active" : ""}`}
             type="button"
             onClick={() => setShowPreferences(false)}
           >
@@ -573,13 +516,10 @@ function App() {
           </button>
 
           <button
-            className={`nav-item ${showPreferences ? "nav-item--active" : ""
-              }`}
+            className={`nav-item ${showPreferences ? "nav-item--active" : ""}`}
             type="button"
             aria-expanded={showPreferences}
-            onClick={() =>
-              setShowPreferences((current) => !current)
-            }
+            onClick={() => setShowPreferences((current) => !current)}
           >
             <Settings size={18} />
             <span>Preferences</span>
@@ -587,24 +527,19 @@ function App() {
         </nav>
 
         {showPreferences && (
-          <section
-            className="preferences-popover"
-            role="dialog"
-            aria-label="Dashboard preferences"
-          >
+          <section className="preferences-popover" role="dialog" aria-label="Dashboard preferences">
             <div className="preferences-heading">
               <div>
                 <h2>Preferences</h2>
                 <p>Choose which sections appear on your dashboard.</p>
               </div>
-
               <button
                 type="button"
                 className="preferences-close"
                 onClick={() => setShowPreferences(false)}
                 aria-label="Close preferences"
               >
-                ×
+                <X size={17} />
               </button>
             </div>
 
@@ -614,10 +549,7 @@ function App() {
                 checked={preferences.showCollegePlacements}
                 disabled={!preferences.showOffCampus}
                 onChange={(event) =>
-                  updateSectionVisibility(
-                    "college-placement",
-                    event.target.checked,
-                  )
+                  updateSectionVisibility("college-placement", event.target.checked)
                 }
               />
               <span>Show College Placements</span>
@@ -629,10 +561,7 @@ function App() {
                 checked={preferences.showOffCampus}
                 disabled={!preferences.showCollegePlacements}
                 onChange={(event) =>
-                  updateSectionVisibility(
-                    "off-campus",
-                    event.target.checked,
-                  )
+                  updateSectionVisibility("off-campus", event.target.checked)
                 }
               />
               <span>Show Off Campus</span>
@@ -640,24 +569,17 @@ function App() {
 
             <label className="default-section-field">
               <span>Default section on launch</span>
-
               <select
                 value={preferences.defaultSection}
                 onChange={(event) =>
-                  updateDefaultSection(
-                    event.target.value as ApplicationSection,
-                  )
+                  updateDefaultSection(event.target.value as ApplicationSection)
                 }
               >
-                {preferences.showCollegePlacements && (
-                  <option value="college-placement">
-                    College Placements
+                {visibleSections.map((section) => (
+                  <option key={section} value={section}>
+                    {sections[section].label}
                   </option>
-                )}
-
-                {preferences.showOffCampus && (
-                  <option value="off-campus">Off Campus</option>
-                )}
+                ))}
               </select>
             </label>
           </section>
@@ -683,24 +605,19 @@ function App() {
               title={`Switch to ${theme === "light" ? "dark" : "light"} theme`}
             >
               <Sun size={16} />
-
               <span className="theme-switch-track" aria-hidden="true">
                 <span
-                  className={`theme-switch-thumb ${theme === "dark"
-                      ? "theme-switch-thumb--dark"
-                      : ""
+                  className={`theme-switch-thumb ${theme === "dark" ? "theme-switch-thumb--dark" : ""
                     }`}
                 />
               </span>
-
               <Moon size={16} />
             </button>
 
             <button
               className="button button--primary"
               type="button"
-              disabled
-              title="Application entry will be added later"
+              onClick={() => setShowApplicationForm(true)}
             >
               <Plus size={17} />
               <span>Add application</span>
@@ -709,34 +626,21 @@ function App() {
         </header>
 
         <nav className="section-tabs" aria-label="Application sections">
-          {(
-            Object.keys(sections) as ApplicationSection[]
-          )
-            .filter((section) =>
-              section === "college-placement"
-                ? preferences.showCollegePlacements
-                : preferences.showOffCampus,
-            )
-            .map((section) => (
-              <button
-                key={section}
-                type="button"
-                className={`section-tab ${activeSection === section
-                    ? "section-tab--active"
-                    : ""
-                  }`}
-                aria-pressed={activeSection === section}
-                onClick={() => changeSection(section)}
-              >
-                {sections[section].label}
-              </button>
-            ))}
+          {visibleSections.map((section) => (
+            <button
+              key={section}
+              type="button"
+              className={`section-tab ${activeSection === section ? "section-tab--active" : ""
+                }`}
+              aria-pressed={activeSection === section}
+              onClick={() => changeSection(section)}
+            >
+              {sections[section].label}
+            </button>
+          ))}
         </nav>
 
-        <section
-          className="metrics-grid"
-          aria-label="Application summary"
-        >
+        <section className="metrics-grid" aria-label="Application summary">
           {metrics.map((metric) => (
             <MetricCard key={metric.label} {...metric} />
           ))}
@@ -748,22 +652,16 @@ function App() {
               <h2>{sections[activeSection].label}</h2>
               <p>{sections[activeSection].description}</p>
             </div>
-
             <span className="record-count">
               {filteredApplications.length}{" "}
-              {filteredApplications.length === 1
-                ? "application"
-                : "applications"}
+              {filteredApplications.length === 1 ? "application" : "applications"}
             </span>
           </div>
 
           <div className="toolbar">
             <label className="search-field">
               <Search size={17} aria-hidden="true" />
-              <span className="sr-only">
-                Search companies or roles
-              </span>
-
+              <span className="sr-only">Search companies or roles</span>
               <input
                 type="search"
                 placeholder="Search companies or roles..."
@@ -774,17 +672,13 @@ function App() {
 
             <label className="select-field">
               <span className="sr-only">Filter by role type</span>
-
               <select
                 value={roleFilter}
                 onChange={(event) =>
-                  setRoleFilter(
-                    event.target.value as RoleType | "all",
-                  )
+                  setRoleFilter(event.target.value as RoleType | "all")
                 }
               >
                 <option value="all">All role types</option>
-
                 {ROLE_TYPES.map((roleType) => (
                   <option key={roleType} value={roleType}>
                     {formatLabel(roleType)}
@@ -795,15 +689,11 @@ function App() {
 
             <label className="select-field">
               <span className="sr-only">Filter by status</span>
-
               <select
                 value={statusFilter}
-                onChange={(event) =>
-                  setStatusFilter(event.target.value)
-                }
+                onChange={(event) => setStatusFilter(event.target.value)}
               >
                 <option value="all">All statuses</option>
-
                 {statusOptions.map((status) => (
                   <option key={status} value={status}>
                     {formatLabel(status)}
@@ -814,15 +704,11 @@ function App() {
 
             <label className="select-field">
               <span className="sr-only">Filter by stage</span>
-
               <select
                 value={stageFilter}
-                onChange={(event) =>
-                  setStageFilter(event.target.value)
-                }
+                onChange={(event) => setStageFilter(event.target.value)}
               >
                 <option value="all">All stages</option>
-
                 {stageOptions.map((stage) => (
                   <option key={stage} value={stage}>
                     {formatLabel(stage)}
@@ -834,23 +720,16 @@ function App() {
             <label className="select-field sort-field">
               <SlidersHorizontal size={15} aria-hidden="true" />
               <span className="sr-only">Sort applications</span>
-
               <select
                 value={sortBy}
-                onChange={(event) =>
-                  setSortBy(event.target.value as SortOption)
-                }
+                onChange={(event) => setSortBy(event.target.value as SortOption)}
               >
                 <option value="date-desc">Newest added</option>
                 <option value="date-asc">Oldest added</option>
                 <option value="company-asc">Company A–Z</option>
                 <option value="company-desc">Company Z–A</option>
-                <option value="stipend-asc">
-                  Stipend: low to high
-                </option>
-                <option value="stipend-desc">
-                  Stipend: high to low
-                </option>
+                <option value="stipend-asc">Stipend: low to high</option>
+                <option value="stipend-desc">Stipend: high to low</option>
                 <option value="ctc-asc">CTC: low to high</option>
                 <option value="ctc-desc">CTC: high to low</option>
               </select>
@@ -859,19 +738,16 @@ function App() {
             <div className="view-switch" aria-label="Application view">
               <button
                 type="button"
-                className={`view-button ${view === "list" ? "view-button--active" : ""
-                  }`}
+                className={`view-button ${view === "list" ? "view-button--active" : ""}`}
                 aria-label="List view"
                 aria-pressed={view === "list"}
                 onClick={() => setView("list")}
               >
                 <List size={17} />
               </button>
-
               <button
                 type="button"
-                className={`view-button ${view === "grid" ? "view-button--active" : ""
-                  }`}
+                className={`view-button ${view === "grid" ? "view-button--active" : ""}`}
                 aria-label="Grid view"
                 aria-pressed={view === "grid"}
                 onClick={() => setView("grid")}
@@ -884,10 +760,8 @@ function App() {
           {hasActiveFilters && (
             <div className="filter-summary">
               <span>
-                Showing {filteredApplications.length} of{" "}
-                {sectionApplications.length} applications
+                Showing {filteredApplications.length} of {sectionApplications.length} applications
               </span>
-
               <button type="button" onClick={resetFilters}>
                 Clear filters
               </button>
@@ -899,19 +773,16 @@ function App() {
               <div className="empty-state-icon">
                 <Briefcase size={25} strokeWidth={1.6} />
               </div>
-
               <h3>
                 {sectionApplications.length === 0
                   ? "No applications yet"
                   : "No matching applications"}
               </h3>
-
               <p>
                 {sectionApplications.length === 0
                   ? "Applications you add will appear here."
                   : "Try changing your search or filters."}
               </p>
-
               {hasActiveFilters && (
                 <button
                   className="button button--secondary"
@@ -936,55 +807,33 @@ function App() {
                     <th scope="col">Added</th>
                   </tr>
                 </thead>
-
                 <tbody>
                   {filteredApplications.map((application) => (
                     <tr key={application.id}>
-                      <td>
-                        <CompanyCell application={application} />
-                      </td>
-
+                      <td><CompanyCell application={application} /></td>
                       <td>
                         <span className="type-pill">
                           {formatLabel(application.roleType)}
                         </span>
                       </td>
-
                       <td className="compensation-cell">
-                        {formatCompensation(
-                          application.stipend,
-                          "stipend",
-                          application.currency,
-                        )}
+                        {formatCompensation(application.stipend, "stipend", application.currency)}
                       </td>
-
                       <td className="compensation-cell">
-                        {formatCompensation(
-                          application.ctc,
-                          "ctc",
-                          application.currency,
-                        )}
+                        {formatCompensation(application.ctc, "ctc", application.currency)}
                       </td>
-
                       <td>
-                        <span
-                          className={`status-pill status-pill--${application.status ?? "unset"}`}
-                        >
+                        <span className={`status-pill status-pill--${application.status ?? "unset"}`}>
                           {formatLabel(application.status)}
                         </span>
                       </td>
-
                       <td>
                         <span className="stage-pill">
                           {formatLabel(application.reachedStage)}
                         </span>
                       </td>
-
                       <td>
-                        <time
-                          className="added-date"
-                          dateTime={application.createdAt}
-                        >
+                        <time className="added-date" dateTime={application.createdAt}>
                           {formatDate(application.createdAt)}
                         </time>
                       </td>
@@ -996,20 +845,42 @@ function App() {
           ) : (
             <div className="application-grid">
               {filteredApplications.map((application) => (
-                <ApplicationCard
-                  key={application.id}
-                  application={application}
-                />
+                <ApplicationCard key={application.id} application={application} />
               ))}
             </div>
           )}
 
           <footer className="panel-footer">
             <span>Sample records for development</span>
-            <span>Changes are not saved</span>
+            <span>Changes reset when this page is refreshed</span>
           </footer>
         </section>
       </main>
+
+      {showApplicationForm && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowApplicationForm(false);
+            }
+          }}
+        >
+          <div
+            className="modal-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Add application"
+          >
+            <ApplicationForm
+              initialSection={activeSection}
+              availableSections={visibleSections}
+              onSubmit={handleCreateApplication}
+              onCancel={() => setShowApplicationForm(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

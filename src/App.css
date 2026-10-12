@@ -1273,3 +1273,64 @@ select:focus-visible {
     padding: 15px;
   }
 }
+
+
+/* Application form modal */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
+  background: rgb(27 5 28 / 76%);
+}
+
+.modal-dialog {
+  width: min(100%, 720px);
+  max-height: 100%;
+  margin: auto;
+  overflow-y: auto;
+  border: 1px solid var(--cc-border);
+  border-radius: 14px;
+  background: var(--cc-surface);
+  box-shadow: 0 20px 60px rgb(27 5 28 / 35%);
+}
+
+.modal-dialog .application-form {
+  width: 100%;
+  max-height: none;
+  overflow: visible;
+  border: 0;
+  border-radius: inherit;
+  box-shadow: none;
+}
+
+/* The modal itself is the only active foreground surface. */
+.app-shell[data-theme="dark"] .modal-dialog {
+  background: #362439;
+}
+
+.form-section-summary {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--cc-border);
+  border-radius: 7px;
+  background: var(--cc-surface-active);
+  color: var(--cc-text);
+  font-size: 12px;
+}
+
+@media (max-width: 560px) {
+  .modal-backdrop {
+    align-items: flex-start;
+    padding: 12px;
+  }
+
+  .modal-dialog {
+    margin: auto 0;
+  }
+}
