@@ -1,4 +1,4 @@
-
+import { CURRENCY_CODES } from "../types/application";
 import type {
     CollegePlacementStage,
     CollegePlacementStatus,
@@ -194,6 +194,10 @@ export function validateApplicationDraft(
         input.role.trim() === ""
     ) {
         errors.push("Role is required.");
+    }
+
+    if (!isOneOf(input.currency, CURRENCY_CODES)) {
+        errors.push("A valid currency is required.");
     }
 
     const validSection =

@@ -1,8 +1,28 @@
 
-/**
- * Shared types for Career Circus.
- * These describe the data model, not the UI.
- */
+export const CURRENCY_CODES = [
+    "INR",
+    "USD",
+    "EUR",
+    "GBP",
+    "CAD",
+    "AUD",
+    "SGD",
+    "AED",
+    "JPY",
+    "CNY",
+    "CHF",
+    "NZD",
+    "HKD",
+    "SAR",
+    "MYR",
+    "IDR",
+    "KRW",
+    "THB",
+    "PHP",
+    "BDT",
+] as const;
+
+export type CurrencyCode = (typeof CURRENCY_CODES)[number];
 
 export type ApplicationSection =
     | "college-placement"
@@ -13,14 +33,6 @@ export type RoleType =
     | "full-time"
     | "internship-plus-full-time";
 
-/**
- * Compensation is either:
- * - TBD: applicable, but the value is unknown
- * - Fixed: one known amount
- * - Range: a minimum and maximum amount
- *
- * A null compensation field means NA (not applicable).
- */
 export type Compensation =
     | {
         kind: "tbd";
@@ -35,7 +47,6 @@ export type Compensation =
         max: number;
     };
 
-// College placement options
 export type CollegePlacementStatus =
     | "not-eligible"
     | "applied"
@@ -51,7 +62,6 @@ export type CollegePlacementStage =
     | "offer"
     | "nothing";
 
-// Off-campus options
 export type OffCampusStatus =
     | "applied"
     | "placed"
@@ -63,22 +73,14 @@ export type OffCampusStage =
     | "interview"
     | "offer";
 
-/**
- * Fields shared by every application.
- * Timestamps will use ISO 8601 strings.
- */
 type ApplicationBase = {
     id: string;
     companyName: string;
     role: string;
+    currency: CurrencyCode;
     createdAt: string;
 };
 
-/**
- * College placement applications.
- * The role type determines which compensation
- * fields apply.
- */
 type CollegePlacementBase = ApplicationBase & {
     section: "college-placement";
     status: CollegePlacementStatus | null;
@@ -102,9 +104,6 @@ export type CollegePlacementApplication =
         ctc: Compensation;
     });
 
-/**
- * Off-campus applications.
- */
 type OffCampusBase = ApplicationBase & {
     section: "off-campus";
     status: OffCampusStatus | null;
@@ -128,10 +127,6 @@ export type OffCampusApplication =
         ctc: Compensation;
     });
 
-/**
- * A single type representing an application
- * from either section.
- */
 export type Application =
     | CollegePlacementApplication
     | OffCampusApplication;
