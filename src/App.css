@@ -1470,3 +1470,17 @@ select:focus-visible {
     height: 30px;
   }
 }
+
+
+/* Local storage status */
+
+.storage-warning {
+  margin: -10px 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--cc-border);
+  border-radius: 8px;
+  background: var(--cc-surface-alt);
+  color: var(--cc-text);
+  font-size: 12px;
+  line-height: 1.6;
+}

@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Award,
   BarChart3,
@@ -43,6 +43,11 @@ import {
   createValidatedApplication,
   updateValidatedApplication,
 } from "./utils/applicationService";
+
+import {
+  loadApplications,
+  saveApplications,
+} from "./utils/applicationStorage";
 
 import { sampleApplications } from "./data/sampleApplications";
 import { formatCompensation } from "./utils/compensation";
@@ -200,6 +205,7 @@ function compareCompensation(
   const first = amountForSort(a);
   const second = amountForSort(b);
 
+  // Keep TBD and NA at the bottom in both directions.
   if (first === null && second === null) return 0;
   if (first === null) return 1;
   if (second === null) return -1;
@@ -344,18 +350,25 @@ function ApplicationCard({
 
 function App() {
   const [theme, setTheme] = useState<ThemeMode>(readSavedTheme);
+
   const [preferences, setPreferences] =
     useState<SectionPreferences>(readPreferences);
-  const [applications, setApplications] =
-    useState<Application[]>(sampleApplications);
+
+  const [applications, setApplications] = useState<Application[]>(
+    () => loadApplications(sampleApplications),
+  );
+
+  const [storageWarning, setStorageWarning] = useState<string | null>(null);
 
   const [activeSection, setActiveSection] =
     useState<ApplicationSection>(() => preferences.defaultSection);
 
   const [showPreferences, setShowPreferences] = useState(false);
   const [showApplicationForm, setShowApplicationForm] = useState(false);
+
   const [editingApplication, setEditingApplication] =
     useState<Application | null>(null);
+
   const [applicationToDelete, setApplicationToDelete] =
     useState<Application | null>(null);
 
@@ -366,6 +379,17 @@ function App() {
   const [stageFilter, setStageFilter] = useState("all");
   const [sortBy, setSortBy] = useState<SortOption>("date-desc");
   const [view, setView] = useState<ViewMode>("list");
+
+  // Save whenever an application is added, edited, or deleted.
+  useEffect(() => {
+    const saved = saveApplications(applications);
+
+    setStorageWarning(
+      saved
+        ? null
+        : "Your changes are only in memory right now. Browser storage is unavailable, so they may be lost when you refresh.",
+    );
+  }, [applications]);
 
   const visibleSections: ApplicationSection[] = [
     ...(preferences.showCollegePlacements
@@ -426,7 +450,7 @@ function App() {
       }
     });
 
-  // These overview metrics are provisional and will be revisited.
+  // These metrics are provisional and will be revisited.
   const metrics = [
     {
       label: "Total applications",
@@ -766,6 +790,12 @@ function App() {
           </div>
         </header>
 
+        {storageWarning && (
+          <p className="storage-warning" role="status">
+            {storageWarning}
+          </p>
+        )}
+
         <nav className="section-tabs" aria-label="Application sections">
           {visibleSections.map((section) => (
             <button
@@ -1028,8 +1058,12 @@ function App() {
           )}
 
           <footer className="panel-footer">
-            <span>Sample records for development</span>
-            <span>Changes reset when this page is refreshed</span>
+            <span>
+              {storageWarning
+                ? "Local saving unavailable"
+                : "Saved locally in this browser"}
+            </span>
+            <span>Not synced across devices</span>
           </footer>
         </section>
       </main>
