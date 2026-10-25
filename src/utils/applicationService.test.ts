@@ -1,7 +1,11 @@
 
 import { describe, expect, it } from "vitest";
 import type { ApplicationDraft } from "../types/application";
-import { createValidatedApplication } from "./applicationService";
+
+import {
+    createValidatedApplication,
+    updateValidatedApplication,
+} from "./applicationService";
 
 function collegeInternshipDraft(): ApplicationDraft {
     return {
@@ -33,9 +37,7 @@ function offCampusFullTimeDraft(): ApplicationDraft {
 
 describe("createValidatedApplication", () => {
     it("creates a valid college internship", () => {
-        const result = createValidatedApplication(
-            collegeInternshipDraft(),
-        );
+        const result = createValidatedApplication(collegeInternshipDraft());
 
         expect(result.success).toBe(true);
 
@@ -50,9 +52,7 @@ describe("createValidatedApplication", () => {
         });
         expect(result.application.ctc).toBeNull();
         expect(result.application.id).toBeTruthy();
-        expect(
-            Number.isNaN(Date.parse(result.application.createdAt)),
-        ).toBe(false);
+        expect(Number.isNaN(Date.parse(result.application.createdAt))).toBe(false);
     });
 
     it("trims whitespace from company and role names", () => {
@@ -72,10 +72,8 @@ describe("createValidatedApplication", () => {
         expect(result.application.role).toBe("Software Intern");
     });
 
-    it("preserves the currency and full annual CTC amount", () => {
-        const result = createValidatedApplication(
-            offCampusFullTimeDraft(),
-        );
+    it("preserves currency and the full annual CTC amount", () => {
+        const result = createValidatedApplication(offCampusFullTimeDraft());
 
         expect(result.success).toBe(true);
 
@@ -94,7 +92,7 @@ describe("createValidatedApplication", () => {
         expect(result.application.stipend).toBeNull();
     });
 
-    it("rejects a compensation range with the minimum above the maximum", () => {
+    it("rejects a compensation range with minimum above maximum", () => {
         const draft = {
             ...collegeInternshipDraft(),
             stipend: {
@@ -108,11 +106,11 @@ describe("createValidatedApplication", () => {
 
         expect(result.success).toBe(false);
 
-        if (result.success) return;
-
-        expect(result.errors).toContain(
-            "Stipend minimum cannot exceed its maximum.",
-        );
+        if (!result.success) {
+            expect(result.errors).toContain(
+                "Stipend minimum cannot exceed its maximum.",
+            );
+        }
     });
 
     it("rejects CTC for an internship", () => {
@@ -125,11 +123,11 @@ describe("createValidatedApplication", () => {
 
         expect(result.success).toBe(false);
 
-        if (result.success) return;
-
-        expect(result.errors).toContain(
-            "CTC must be NA for the selected role type.",
-        );
+        if (!result.success) {
+            expect(result.errors).toContain(
+                "CTC must be NA for the selected role type.",
+            );
+        }
     });
 
     it("rejects an unsupported currency code", () => {
@@ -142,11 +140,9 @@ describe("createValidatedApplication", () => {
 
         expect(result.success).toBe(false);
 
-        if (result.success) return;
-
-        expect(result.errors).toContain(
-            "A valid currency is required.",
-        );
+        if (!result.success) {
+            expect(result.errors).toContain("A valid currency is required.");
+        }
     });
 
     it("rejects a college-only status in an off-campus application", () => {
@@ -159,11 +155,11 @@ describe("createValidatedApplication", () => {
 
         expect(result.success).toBe(false);
 
-        if (result.success) return;
-
-        expect(result.errors).toContain(
-            "Status contains an invalid or missing selection.",
-        );
+        if (!result.success) {
+            expect(result.errors).toContain(
+                "Status contains an invalid or missing selection.",
+            );
+        }
     });
 
     it("rejects malformed company names without throwing", () => {
@@ -178,8 +174,79 @@ describe("createValidatedApplication", () => {
 
         expect(result.success).toBe(false);
 
-        if (result.success) return;
+        if (!result.success) {
+            expect(result.errors).toContain("Company name is required.");
+        }
+    });
+});
 
-        expect(result.errors).toContain("Company name is required.");
+describe("updateValidatedApplication", () => {
+    it("updates application details while preserving ID and creation date", () => {
+        const created = createValidatedApplication(collegeInternshipDraft());
+
+        expect(created.success).toBe(true);
+        if (!created.success) return;
+
+        const originalId = created.application.id;
+        const originalCreatedAt = created.application.createdAt;
+
+        const updatedDraft: ApplicationDraft = {
+            section: "off-campus",
+            companyName: "Updated Technologies",
+            role: "Senior Software Engineer",
+            roleType: "full-time",
+            currency: "USD",
+            stipend: null,
+            ctc: {
+                kind: "fixed",
+                amount: 95000,
+            },
+            status: "applied",
+            reachedStage: "interview",
+        };
+
+        const result = updateValidatedApplication(
+            created.application,
+            updatedDraft,
+        );
+
+        expect(result.success).toBe(true);
+        if (!result.success) return;
+
+        expect(result.application.id).toBe(originalId);
+        expect(result.application.createdAt).toBe(originalCreatedAt);
+        expect(result.application.companyName).toBe("Updated Technologies");
+        expect(result.application.section).toBe("off-campus");
+        expect(result.application.currency).toBe("USD");
+        expect(result.application.role).toBe("Senior Software Engineer");
+    });
+
+    it("rejects invalid edits without creating an updated record", () => {
+        const created = createValidatedApplication(collegeInternshipDraft());
+
+        expect(created.success).toBe(true);
+        if (!created.success) return;
+
+        const invalidDraft = {
+            ...collegeInternshipDraft(),
+            stipend: {
+                kind: "range" as const,
+                min: 40000,
+                max: 20000,
+            },
+        } as ApplicationDraft;
+
+        const result = updateValidatedApplication(
+            created.application,
+            invalidDraft,
+        );
+
+        expect(result.success).toBe(false);
+
+        if (!result.success) {
+            expect(result.errors).toContain(
+                "Stipend minimum cannot exceed its maximum.",
+            );
+        }
     });
 });

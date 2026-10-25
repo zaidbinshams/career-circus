@@ -17,9 +17,19 @@ export type CreateApplicationResult =
         errors: string[];
     };
 
+export type UpdateApplicationResult = CreateApplicationResult;
+
+function normalizeDraft(draft: ApplicationDraft): ApplicationDraft {
+    return {
+        ...draft,
+        companyName: draft.companyName.trim(),
+        role: draft.role.trim(),
+    };
+}
+
 /**
- * Validates and creates a new application record.
- * Does not persist the record to a database.
+ * Validates and creates a new application.
+ * Generates a new ID and creation timestamp.
  */
 export function createValidatedApplication(
     draft: ApplicationDraft,
@@ -33,14 +43,39 @@ export function createValidatedApplication(
         };
     }
 
-    const normalizedDraft: ApplicationDraft = {
-        ...draft,
-        companyName: draft.companyName.trim(),
-        role: draft.role.trim(),
+    return {
+        success: true,
+        application: createApplication(normalizeDraft(draft)),
+    };
+}
+
+/**
+ * Validates and updates an existing application.
+ * Preserves its ID and original creation timestamp.
+ */
+export function updateValidatedApplication(
+    existing: Application,
+    draft: ApplicationDraft,
+): UpdateApplicationResult {
+    const validation = validateApplicationDraft(draft);
+
+    if (!validation.valid) {
+        return {
+            success: false,
+            errors: validation.errors,
+        };
+    }
+
+    const normalizedDraft = normalizeDraft(draft);
+
+    const application: Application = {
+        ...normalizedDraft,
+        id: existing.id,
+        createdAt: existing.createdAt,
     };
 
     return {
         success: true,
-        application: createApplication(normalizedDraft),
+        application,
     };
 }

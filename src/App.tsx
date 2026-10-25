@@ -9,12 +9,14 @@ import {
   LayoutDashboard,
   List,
   Moon,
+  Pencil,
   Plus,
   Search,
   Send,
   Settings,
   SlidersHorizontal,
   Sun,
+  Trash2,
   Upload,
   Users,
   X,
@@ -37,7 +39,11 @@ import {
   ROLE_TYPES,
 } from "./utils/applicationValidation";
 
-import { createValidatedApplication } from "./utils/applicationService";
+import {
+  createValidatedApplication,
+  updateValidatedApplication,
+} from "./utils/applicationService";
+
 import { sampleApplications } from "./data/sampleApplications";
 import { formatCompensation } from "./utils/compensation";
 import ApplicationForm from "./components/ApplicationForm";
@@ -106,9 +112,11 @@ function readSavedTheme(): ThemeMode {
 function readPreferences(): SectionPreferences {
   try {
     const saved = localStorage.getItem("career-circus-preferences");
+
     if (!saved) return DEFAULT_PREFERENCES;
 
     const parsed: unknown = JSON.parse(saved);
+
     if (typeof parsed !== "object" || parsed === null) {
       return DEFAULT_PREFERENCES;
     }
@@ -230,7 +238,49 @@ function CompanyCell({ application }: { application: Application }) {
   );
 }
 
-function ApplicationCard({ application }: { application: Application }) {
+function ApplicationActions({
+  application,
+  onEdit,
+  onDelete,
+}: {
+  application: Application;
+  onEdit: (application: Application) => void;
+  onDelete: (application: Application) => void;
+}) {
+  return (
+    <div className="application-actions">
+      <button
+        type="button"
+        className="icon-action-button"
+        aria-label={`Edit ${application.companyName}`}
+        title="Edit application"
+        onClick={() => onEdit(application)}
+      >
+        <Pencil size={15} />
+      </button>
+
+      <button
+        type="button"
+        className="icon-action-button"
+        aria-label={`Delete ${application.companyName}`}
+        title="Delete application"
+        onClick={() => onDelete(application)}
+      >
+        <Trash2 size={15} />
+      </button>
+    </div>
+  );
+}
+
+function ApplicationCard({
+  application,
+  onEdit,
+  onDelete,
+}: {
+  application: Application;
+  onEdit: (application: Application) => void;
+  onDelete: (application: Application) => void;
+}) {
   return (
     <article className="application-card">
       <div className="application-card-heading">
@@ -238,6 +288,7 @@ function ApplicationCard({ application }: { application: Application }) {
           <h3>{application.companyName}</h3>
           <p className="role-name">{application.role}</p>
         </div>
+
         <time className="added-date" dateTime={application.createdAt}>
           {formatDate(application.createdAt)}
         </time>
@@ -245,9 +296,13 @@ function ApplicationCard({ application }: { application: Application }) {
 
       <div className="card-tags">
         <span className="type-pill">{formatLabel(application.roleType)}</span>
-        <span className={`status-pill status-pill--${application.status ?? "unset"}`}>
+
+        <span
+          className={`status-pill status-pill--${application.status ?? "unset"}`}
+        >
           {formatLabel(application.status)}
         </span>
+
         <span className="stage-pill">
           {formatLabel(application.reachedStage)}
         </span>
@@ -257,15 +312,31 @@ function ApplicationCard({ application }: { application: Application }) {
         <div>
           <span>Stipend</span>
           <strong>
-            {formatCompensation(application.stipend, "stipend", application.currency)}
+            {formatCompensation(
+              application.stipend,
+              "stipend",
+              application.currency,
+            )}
           </strong>
         </div>
         <div>
           <span>CTC</span>
           <strong>
-            {formatCompensation(application.ctc, "ctc", application.currency)}
+            {formatCompensation(
+              application.ctc,
+              "ctc",
+              application.currency,
+            )}
           </strong>
         </div>
+      </div>
+
+      <div className="application-card-actions">
+        <ApplicationActions
+          application={application}
+          onEdit={onEdit}
+          onDelete={onDelete}
+        />
       </div>
     </article>
   );
@@ -283,13 +354,17 @@ function App() {
 
   const [showPreferences, setShowPreferences] = useState(false);
   const [showApplicationForm, setShowApplicationForm] = useState(false);
+  const [editingApplication, setEditingApplication] =
+    useState<Application | null>(null);
+  const [applicationToDelete, setApplicationToDelete] =
+    useState<Application | null>(null);
+
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] =
     useState<RoleType | "all">("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [stageFilter, setStageFilter] = useState("all");
-  const [sortBy, setSortBy] =
-    useState<SortOption>("date-desc");
+  const [sortBy, setSortBy] = useState<SortOption>("date-desc");
   const [view, setView] = useState<ViewMode>("list");
 
   const visibleSections: ApplicationSection[] = [
@@ -360,12 +435,15 @@ function App() {
     },
     {
       label: "Applied",
-      value: sectionApplications.filter((app) => app.status === "applied").length,
+      value: sectionApplications.filter((app) => app.status === "applied")
+        .length,
       icon: Send,
     },
     {
       label: "Interviews",
-      value: sectionApplications.filter((app) => app.reachedStage === "interview").length,
+      value: sectionApplications.filter(
+        (app) => app.reachedStage === "interview",
+      ).length,
       icon: Users,
     },
     {
@@ -384,7 +462,9 @@ function App() {
     stageFilter !== "all";
 
   function toggleTheme() {
-    const nextTheme: ThemeMode = theme === "light" ? "dark" : "light";
+    const nextTheme: ThemeMode =
+      theme === "light" ? "dark" : "light";
+
     setTheme(nextTheme);
 
     try {
@@ -435,10 +515,11 @@ function App() {
     savePreferences(next);
 
     if (section === activeSection && !visible) {
-      const fallbackSection =
-        section === "college-placement" ? "off-campus" : "college-placement";
-
-      setActiveSection(fallbackSection);
+      setActiveSection(
+        section === "college-placement"
+          ? "off-campus"
+          : "college-placement",
+      );
       setRoleFilter("all");
       setStatusFilter("all");
       setStageFilter("all");
@@ -453,22 +534,63 @@ function App() {
     savePreferences(next);
   }
 
-  function handleCreateApplication(draft: ApplicationDraft): string[] | void {
-    const result = createValidatedApplication(draft);
+  function openAddForm() {
+    setEditingApplication(null);
+    setShowApplicationForm(true);
+  }
+
+  function openEditForm(application: Application) {
+    setEditingApplication(application);
+    setShowApplicationForm(true);
+  }
+
+  function closeApplicationForm() {
+    setShowApplicationForm(false);
+    setEditingApplication(null);
+  }
+
+  function handleSaveApplication(
+    draft: ApplicationDraft,
+  ): string[] | void {
+    const result = editingApplication
+      ? updateValidatedApplication(editingApplication, draft)
+      : createValidatedApplication(draft);
 
     if (!result.success) {
       return result.errors;
     }
 
-    setApplications((current) => [...current, result.application]);
+    if (editingApplication) {
+      setApplications((current) =>
+        current.map((application) =>
+          application.id === editingApplication.id
+            ? result.application
+            : application,
+        ),
+      );
+    } else {
+      setApplications((current) => [...current, result.application]);
+    }
+
     setActiveSection(result.application.section);
     setRoleFilter("all");
     setStatusFilter("all");
     setStageFilter("all");
     setSearch("");
-    setShowApplicationForm(false);
 
-    return;
+    closeApplicationForm();
+  }
+
+  function confirmDeleteApplication() {
+    if (!applicationToDelete) return;
+
+    const deletedId = applicationToDelete.id;
+
+    setApplications((current) =>
+      current.filter((application) => application.id !== deletedId),
+    );
+
+    setApplicationToDelete(null);
   }
 
   function resetFilters() {
@@ -481,13 +603,18 @@ function App() {
   return (
     <div className="app-shell" data-theme={theme}>
       <header className="sidebar">
-        <a className="brand" href="#main-content" aria-label="Career Circus home">
+        <a
+          className="brand"
+          href="#main-content"
+          aria-label="Career Circus home"
+        >
           <span className="wordmark">career circus</span>
         </a>
 
         <nav className="sidebar-nav" aria-label="Main navigation">
           <button
-            className={`nav-item ${!showPreferences ? "nav-item--active" : ""}`}
+            className={`nav-item ${!showPreferences ? "nav-item--active" : ""
+              }`}
             type="button"
             onClick={() => setShowPreferences(false)}
           >
@@ -516,7 +643,8 @@ function App() {
           </button>
 
           <button
-            className={`nav-item ${showPreferences ? "nav-item--active" : ""}`}
+            className={`nav-item ${showPreferences ? "nav-item--active" : ""
+              }`}
             type="button"
             aria-expanded={showPreferences}
             onClick={() => setShowPreferences((current) => !current)}
@@ -527,12 +655,17 @@ function App() {
         </nav>
 
         {showPreferences && (
-          <section className="preferences-popover" role="dialog" aria-label="Dashboard preferences">
+          <section
+            className="preferences-popover"
+            role="dialog"
+            aria-label="Dashboard preferences"
+          >
             <div className="preferences-heading">
               <div>
                 <h2>Preferences</h2>
                 <p>Choose which sections appear on your dashboard.</p>
               </div>
+
               <button
                 type="button"
                 className="preferences-close"
@@ -549,7 +682,10 @@ function App() {
                 checked={preferences.showCollegePlacements}
                 disabled={!preferences.showOffCampus}
                 onChange={(event) =>
-                  updateSectionVisibility("college-placement", event.target.checked)
+                  updateSectionVisibility(
+                    "college-placement",
+                    event.target.checked,
+                  )
                 }
               />
               <span>Show College Placements</span>
@@ -561,7 +697,10 @@ function App() {
                 checked={preferences.showOffCampus}
                 disabled={!preferences.showCollegePlacements}
                 onChange={(event) =>
-                  updateSectionVisibility("off-campus", event.target.checked)
+                  updateSectionVisibility(
+                    "off-campus",
+                    event.target.checked,
+                  )
                 }
               />
               <span>Show Off Campus</span>
@@ -572,7 +711,9 @@ function App() {
               <select
                 value={preferences.defaultSection}
                 onChange={(event) =>
-                  updateDefaultSection(event.target.value as ApplicationSection)
+                  updateDefaultSection(
+                    event.target.value as ApplicationSection,
+                  )
                 }
               >
                 {visibleSections.map((section) => (
@@ -617,7 +758,7 @@ function App() {
             <button
               className="button button--primary"
               type="button"
-              onClick={() => setShowApplicationForm(true)}
+              onClick={openAddForm}
             >
               <Plus size={17} />
               <span>Add application</span>
@@ -654,7 +795,9 @@ function App() {
             </div>
             <span className="record-count">
               {filteredApplications.length}{" "}
-              {filteredApplications.length === 1 ? "application" : "applications"}
+              {filteredApplications.length === 1
+                ? "application"
+                : "applications"}
             </span>
           </div>
 
@@ -722,7 +865,9 @@ function App() {
               <span className="sr-only">Sort applications</span>
               <select
                 value={sortBy}
-                onChange={(event) => setSortBy(event.target.value as SortOption)}
+                onChange={(event) =>
+                  setSortBy(event.target.value as SortOption)
+                }
               >
                 <option value="date-desc">Newest added</option>
                 <option value="date-asc">Oldest added</option>
@@ -738,16 +883,19 @@ function App() {
             <div className="view-switch" aria-label="Application view">
               <button
                 type="button"
-                className={`view-button ${view === "list" ? "view-button--active" : ""}`}
+                className={`view-button ${view === "list" ? "view-button--active" : ""
+                  }`}
                 aria-label="List view"
                 aria-pressed={view === "list"}
                 onClick={() => setView("list")}
               >
                 <List size={17} />
               </button>
+
               <button
                 type="button"
-                className={`view-button ${view === "grid" ? "view-button--active" : ""}`}
+                className={`view-button ${view === "grid" ? "view-button--active" : ""
+                  }`}
                 aria-label="Grid view"
                 aria-pressed={view === "grid"}
                 onClick={() => setView("grid")}
@@ -760,7 +908,8 @@ function App() {
           {hasActiveFilters && (
             <div className="filter-summary">
               <span>
-                Showing {filteredApplications.length} of {sectionApplications.length} applications
+                Showing {filteredApplications.length} of{" "}
+                {sectionApplications.length} applications
               </span>
               <button type="button" onClick={resetFilters}>
                 Clear filters
@@ -805,25 +954,38 @@ function App() {
                     <th scope="col">Status</th>
                     <th scope="col">Stage</th>
                     <th scope="col">Added</th>
+                    <th scope="col">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredApplications.map((application) => (
                     <tr key={application.id}>
-                      <td><CompanyCell application={application} /></td>
+                      <td>
+                        <CompanyCell application={application} />
+                      </td>
                       <td>
                         <span className="type-pill">
                           {formatLabel(application.roleType)}
                         </span>
                       </td>
                       <td className="compensation-cell">
-                        {formatCompensation(application.stipend, "stipend", application.currency)}
+                        {formatCompensation(
+                          application.stipend,
+                          "stipend",
+                          application.currency,
+                        )}
                       </td>
                       <td className="compensation-cell">
-                        {formatCompensation(application.ctc, "ctc", application.currency)}
+                        {formatCompensation(
+                          application.ctc,
+                          "ctc",
+                          application.currency,
+                        )}
                       </td>
                       <td>
-                        <span className={`status-pill status-pill--${application.status ?? "unset"}`}>
+                        <span
+                          className={`status-pill status-pill--${application.status ?? "unset"}`}
+                        >
                           {formatLabel(application.status)}
                         </span>
                       </td>
@@ -833,9 +995,19 @@ function App() {
                         </span>
                       </td>
                       <td>
-                        <time className="added-date" dateTime={application.createdAt}>
+                        <time
+                          className="added-date"
+                          dateTime={application.createdAt}
+                        >
                           {formatDate(application.createdAt)}
                         </time>
+                      </td>
+                      <td>
+                        <ApplicationActions
+                          application={application}
+                          onEdit={openEditForm}
+                          onDelete={setApplicationToDelete}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -845,7 +1017,12 @@ function App() {
           ) : (
             <div className="application-grid">
               {filteredApplications.map((application) => (
-                <ApplicationCard key={application.id} application={application} />
+                <ApplicationCard
+                  key={application.id}
+                  application={application}
+                  onEdit={openEditForm}
+                  onDelete={setApplicationToDelete}
+                />
               ))}
             </div>
           )}
@@ -862,7 +1039,7 @@ function App() {
           className="modal-backdrop"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
-              setShowApplicationForm(false);
+              closeApplicationForm();
             }
           }}
         >
@@ -870,15 +1047,68 @@ function App() {
             className="modal-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label="Add application"
+            aria-label={
+              editingApplication ? "Edit application" : "Add application"
+            }
           >
             <ApplicationForm
+              key={editingApplication?.id ?? "new-application"}
               initialSection={activeSection}
+              initialApplication={editingApplication}
               availableSections={visibleSections}
-              onSubmit={handleCreateApplication}
-              onCancel={() => setShowApplicationForm(false)}
+              onSubmit={handleSaveApplication}
+              onCancel={closeApplicationForm}
             />
           </div>
+        </div>
+      )}
+
+      {applicationToDelete && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setApplicationToDelete(null);
+            }
+          }}
+        >
+          <section
+            className="confirm-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-dialog-title"
+            aria-describedby="delete-dialog-description"
+          >
+            <div className="confirm-dialog__icon">
+              <Trash2 size={22} />
+            </div>
+
+            <h2 id="delete-dialog-title">Delete application?</h2>
+
+            <p id="delete-dialog-description">
+              This will remove the application for{" "}
+              <strong>{applicationToDelete.companyName}</strong> from the
+              current list. This action cannot be undone.
+            </p>
+
+            <div className="confirm-dialog__actions">
+              <button
+                type="button"
+                className="button button--secondary"
+                onClick={() => setApplicationToDelete(null)}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="button button--primary"
+                onClick={confirmDeleteApplication}
+              >
+                Delete application
+              </button>
+            </div>
+          </section>
         </div>
       )}
     </div>

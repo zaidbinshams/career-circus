@@ -2,6 +2,7 @@
 import { useState, type FormEvent } from "react";
 import {
     CURRENCY_CODES,
+    type Application,
     type ApplicationDraft,
     type ApplicationSection,
     type CollegePlacementStage,
@@ -38,6 +39,7 @@ type CompensationResult = {
 
 type ApplicationFormProps = {
     initialSection: ApplicationSection;
+    initialApplication?: Application | null;
     availableSections: ApplicationSection[];
     onSubmit: (draft: ApplicationDraft) => string[] | void;
     onCancel: () => void;
@@ -96,16 +98,37 @@ const STAGE_LABELS: Record<string, string> = {
     nothing: "Nothing",
 };
 
+function toCompensationInput(
+    value: Compensation | null | undefined,
+): CompensationInput {
+    if (!value || value.kind === "tbd") {
+        return { ...EMPTY_COMPENSATION_INPUT };
+    }
+
+    if (value.kind === "fixed") {
+        return {
+            mode: "fixed",
+            amount: String(value.amount),
+            min: "",
+            max: "",
+        };
+    }
+
+    return {
+        mode: "range",
+        amount: "",
+        min: String(value.min),
+        max: String(value.max),
+    };
+}
+
 function readCompensation(
     input: CompensationInput,
     fieldLabel: string,
 ): CompensationResult {
-    const errors: string[] = [];
-
     if (input.mode === "fixed") {
-        // An empty applicable amount becomes TBD.
         if (input.amount.trim() === "") {
-            return { value: { kind: "tbd" }, errors };
+            return { value: { kind: "tbd" }, errors: [] };
         }
 
         const amount = Number(input.amount);
@@ -119,16 +142,15 @@ function readCompensation(
 
         return {
             value: { kind: "fixed", amount },
-            errors,
+            errors: [],
         };
     }
 
     const minText = input.min.trim();
     const maxText = input.max.trim();
 
-    // Leaving both ends empty means TBD.
     if (minText === "" && maxText === "") {
-        return { value: { kind: "tbd" }, errors };
+        return { value: { kind: "tbd" }, errors: [] };
     }
 
     if (minText === "" || maxText === "") {
@@ -166,7 +188,7 @@ function readCompensation(
 
     return {
         value: { kind: "range", min, max },
-        errors,
+        errors: [],
     };
 }
 
@@ -181,6 +203,11 @@ function CompensationFields({
     value: CompensationInput;
     onChange: (next: CompensationInput) => void;
 }) {
+    const modeButtonClass = (mode: "fixed" | "range") =>
+        value.mode === mode
+            ? "compensation-mode__button compensation-mode__button--active"
+            : "compensation-mode__button";
+
     return (
         <fieldset className="form-field compensation-field">
             <legend>{label}</legend>
@@ -188,30 +215,18 @@ function CompensationFields({
             <div className="compensation-mode" aria-label={`${label} input mode`}>
                 <button
                     type="button"
-                    className={
-                        value.mode === "fixed"
-                            ? "compensation-mode__button compensation-mode__button--active"
-                            : "compensation-mode__button"
-                    }
+                    className={modeButtonClass("fixed")}
                     aria-pressed={value.mode === "fixed"}
-                    onClick={() =>
-                        onChange({ ...value, mode: "fixed" })
-                    }
+                    onClick={() => onChange({ ...value, mode: "fixed" })}
                 >
                     Fixed amount
                 </button>
 
                 <button
                     type="button"
-                    className={
-                        value.mode === "range"
-                            ? "compensation-mode__button compensation-mode__button--active"
-                            : "compensation-mode__button"
-                    }
+                    className={modeButtonClass("range")}
                     aria-pressed={value.mode === "range"}
-                    onClick={() =>
-                        onChange({ ...value, mode: "range" })
-                    }
+                    onClick={() => onChange({ ...value, mode: "range" })}
                 >
                     Range
                 </button>
@@ -270,7 +285,7 @@ function CompensationFields({
 
             <p className="form-hint">
                 {value.mode === "fixed"
-                    ? `Leave empty for TBD. ${label} is entered ${unit === "/month" ? "per month" : "per year"}.`
+                    ? `Leave empty for TBD. Values are entered ${unit === "/month" ? "per month" : "per year"}.`
                     : `Enter both range values, or leave both empty for TBD. Values are ${unit === "/month" ? "monthly" : "annual"}.`}
             </p>
         </fieldset>
@@ -279,25 +294,41 @@ function CompensationFields({
 
 export default function ApplicationForm({
     initialSection,
+    initialApplication = null,
     availableSections,
     onSubmit,
     onCancel,
 }: ApplicationFormProps) {
-    const [section, setSection] =
-        useState<ApplicationSection>(initialSection);
-    const [companyName, setCompanyName] = useState("");
-    const [role, setRole] = useState("");
-    const [roleType, setRoleType] = useState<RoleType | "">("");
-    const [currency, setCurrency] = useState<CurrencyCode>("INR");
-    const [status, setStatus] = useState("");
-    const [stage, setStage] = useState("");
-    const [stipend, setStipend] = useState<CompensationInput>({
-        ...EMPTY_COMPENSATION_INPUT,
-    });
-    const [ctc, setCtc] = useState<CompensationInput>({
-        ...EMPTY_COMPENSATION_INPUT,
-    });
+    const [section, setSection] = useState<ApplicationSection>(
+        () => initialApplication?.section ?? initialSection,
+    );
+    const [companyName, setCompanyName] = useState(
+        () => initialApplication?.companyName ?? "",
+    );
+    const [role, setRole] = useState(
+        () => initialApplication?.role ?? "",
+    );
+    const [roleType, setRoleType] = useState<RoleType | "">(
+        () => initialApplication?.roleType ?? "",
+    );
+    const [currency, setCurrency] = useState<CurrencyCode>(
+        () => initialApplication?.currency ?? "INR",
+    );
+    const [status, setStatus] = useState(
+        () => initialApplication?.status ?? "",
+    );
+    const [stage, setStage] = useState(
+        () => initialApplication?.reachedStage ?? "",
+    );
+    const [stipend, setStipend] = useState<CompensationInput>(() =>
+        toCompensationInput(initialApplication?.stipend),
+    );
+    const [ctc, setCtc] = useState<CompensationInput>(() =>
+        toCompensationInput(initialApplication?.ctc),
+    );
     const [errors, setErrors] = useState<string[]>([]);
+
+    const isEditing = initialApplication !== null;
 
     const statusOptions =
         section === "college-placement"
@@ -373,8 +404,6 @@ export default function ApplicationForm({
             companyName: companyName.trim(),
             role: role.trim(),
             currency,
-            status,
-            reachedStage: stage,
         };
 
         let draft: ApplicationDraft;
@@ -462,10 +491,14 @@ export default function ApplicationForm({
         <form className="application-form" onSubmit={handleSubmit} noValidate>
             <header className="application-form__header">
                 <div>
-                    <p className="form-eyebrow">NEW RECORD</p>
-                    <h2>Add application</h2>
+                    <p className="form-eyebrow">
+                        {isEditing ? "UPDATE RECORD" : "NEW RECORD"}
+                    </p>
+                    <h2>{isEditing ? "Edit application" : "Add application"}</h2>
                     <p className="form-description">
-                        Enter the details for this opportunity.
+                        {isEditing
+                            ? "Update the details for this opportunity."
+                            : "Enter the details for this opportunity."}
                     </p>
                 </div>
 
@@ -481,6 +514,7 @@ export default function ApplicationForm({
 
             <fieldset className="form-field">
                 <legend>Section</legend>
+
                 {availableSections.length > 1 ? (
                     <div className="form-section-switch">
                         {availableSections.map((option) => (
@@ -655,11 +689,8 @@ export default function ApplicationForm({
                     Cancel
                 </button>
 
-                <button
-                    type="submit"
-                    className="form-button form-button--primary"
-                >
-                    Add application
+                <button type="submit" className="form-button form-button--primary">
+                    {isEditing ? "Save changes" : "Add application"}
                 </button>
             </footer>
         </form>
