@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="#362439"></rect>
+
+  <!-- Circus tent roof -->
+  <path d="M32 8 10 29h44L32 8Z" fill="#EAD2EC"></path>
+
+  <path d="M32 8 10 29h22V8Z" fill="#B9A2BB"></path>
+
+  <path d="M32 8 32 29h22L32 8Z" fill="#F0D8F2"></path>
+
+  <!-- Tent body -->
+  <path d="M11 29h42l3 25H8l3-25Z" fill="#FFF1FF"></path>
+
+  <path d="m11 29 12 0-4 25H8l3-25Z" fill="#B9A2BB"></path>
+
+  <path d="M53 29 41 29l4 25h11l-3-25Z" fill="#EAD2EC"></path>
+
+  <!-- Entrance -->
+  <path d="M25 54V43a7 7 0 0 1 14 0v11Z" fill="#362439"></path>
+
+  <!-- Flag -->
+  <path d="M32 8V3" stroke="#FFF1FF" stroke-width="2" stroke-linecap="round"></path>
+
+  <path d="M32 4 43 7 32 11Z" fill="#8B758D"></path>
+</svg>

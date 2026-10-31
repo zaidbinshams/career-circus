@@ -1,8 +1,20 @@
-
 import type { Application } from "../types/application";
 import { validateApplicationDraft } from "./applicationValidation";
 
 export const APPLICATIONS_STORAGE_KEY = "career-circus-applications-v1";
+
+/**
+ * IDs belonging to the fictional records previously used during development.
+ * These are removed from existing browser storage without affecting
+ * applications created by users.
+ */
+const DEMO_APPLICATION_IDS: ReadonlySet<string> = new Set([
+    "sample-college-1",
+    "sample-college-2",
+    "sample-college-3",
+    "sample-off-campus-1",
+    "sample-off-campus-2",
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return (
@@ -14,7 +26,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * Checks stored data before trusting it.
- * This protects the app against malformed or outdated local storage data.
  */
 function isStoredApplication(value: unknown): value is Application {
     if (!isRecord(value)) return false;
@@ -38,8 +49,8 @@ function isStoredApplication(value: unknown): value is Application {
 /**
  * Loads saved applications.
  *
- * If no saved list exists, returns the supplied initial data.
- * Invalid individual records are ignored.
+ * Removes old development sample records while preserving
+ * genuine user-created applications.
  */
 export function loadApplications(
     initialApplications: Application[],
@@ -57,16 +68,16 @@ export function loadApplications(
             return initialApplications;
         }
 
-        return parsed.filter(isStoredApplication);
+        return parsed
+            .filter(isStoredApplication)
+            .filter((application) => !DEMO_APPLICATION_IDS.has(application.id));
     } catch {
-        // If storage is inaccessible or unreadable, keep the app usable.
         return initialApplications;
     }
 }
 
 /**
  * Saves the complete application list.
- * Returns false if the browser refuses the write.
  */
 export function saveApplications(
     applications: Application[],
