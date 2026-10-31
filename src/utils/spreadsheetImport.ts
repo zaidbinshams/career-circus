@@ -25,6 +25,7 @@ export type ColumnMapping = Record<ImportField, number | null>;
 
 export type CtcUnitChoice = "unconfirmed" | "annual" | "lpa";
 export type RoleTypeChoice = RoleType | "unconfirmed";
+export type CurrencyMode = "auto" | "fixed";
 
 export type ParsedImportRow = {
     draft: ApplicationDraft | null;
@@ -34,6 +35,7 @@ export type ParsedImportRow = {
     ambiguousCtcValue: string | null;
     needsRoleTypeConfirmation: boolean;
     roleType: RoleType | null;
+    currency: CurrencyCode;
 };
 
 export const EMPTY_COLUMN_MAPPING: ColumnMapping = {
@@ -68,13 +70,13 @@ export const IMPORT_FIELD_INFO: {
             field: "stipend",
             label: "Monthly stipend",
             required: false,
-            help: "Used to infer role type. Headers such as Stipend (KPM) are used to interpret amounts in thousands per month.",
+            help: "Used to infer role type. Headers such as Stipend (KPM) automatically convert values from thousands to full monthly amounts.",
         },
         {
             field: "ctc",
             label: "Annual CTC",
             required: false,
-            help: "Used to infer role type. Headers such as CTC (LPA) automatically convert amounts from lakhs per annum.",
+            help: "Used to infer role type. Headers such as CTC (LPA) automatically convert values from lakhs to full annual amounts.",
         },
         {
             field: "status",
@@ -92,7 +94,7 @@ export const IMPORT_FIELD_INFO: {
             field: "currency",
             label: "Currency",
             required: false,
-            help: "Optional per-row currency override. Otherwise, currency is inferred from compensation values and headers, then the fallback currency is used.",
+            help: "Optional per-row currency override when automatic detection is enabled.",
         },
     ];
 
@@ -127,31 +129,42 @@ const STAGE_ALIASES: Record<string, string> = {
     none: "nothing",
 };
 
-type CurrencySymbol = {
-    symbol: string;
-    currency: CurrencyCode;
+type CurrencyDetection = {
+    currency: CurrencyCode | null;
+    ambiguous: boolean;
 };
 
-const CURRENCY_SYMBOLS: CurrencySymbol[] = [
-    { symbol: "US$", currency: "USD" },
-    { symbol: "CA$", currency: "CAD" },
-    { symbol: "C$", currency: "CAD" },
-    { symbol: "A$", currency: "AUD" },
-    { symbol: "AU$", currency: "AUD" },
-    { symbol: "S$", currency: "SGD" },
-    { symbol: "HK$", currency: "HKD" },
-    { symbol: "NZ$", currency: "NZD" },
-    { symbol: "₹", currency: "INR" },
-    { symbol: "₨", currency: "INR" },
-    { symbol: "€", currency: "EUR" },
-    { symbol: "£", currency: "GBP" },
-    { symbol: "¥", currency: "JPY" },
-    { symbol: "$", currency: "USD" },
-];
+const SPECIFIC_CURRENCY_SYMBOLS: Array<{
+    symbol: string;
+    currency: CurrencyCode;
+}> = [
+        { symbol: "US$", currency: "USD" },
+        { symbol: "CA$", currency: "CAD" },
+        { symbol: "C$", currency: "CAD" },
+        { symbol: "AU$", currency: "AUD" },
+        { symbol: "A$", currency: "AUD" },
+        { symbol: "S$", currency: "SGD" },
+        { symbol: "HK$", currency: "HKD" },
+        { symbol: "NZ$", currency: "NZD" },
+    ];
+
+const UNIQUE_CURRENCY_SYMBOLS: Array<{
+    symbol: string;
+    currency: CurrencyCode;
+}> = [
+        { symbol: "₹", currency: "INR" },
+        { symbol: "€", currency: "EUR" },
+        { symbol: "£", currency: "GBP" },
+        { symbol: "د.إ", currency: "AED" },
+    ];
 
 function textOf(value: unknown): string {
     if (value === null || value === undefined) return "";
-    if (value instanceof Date) return value.toISOString().slice(0, 10);
+
+    if (value instanceof Date) {
+        return value.toISOString().slice(0, 10);
+    }
+
     return String(value).trim();
 }
 
@@ -165,7 +178,10 @@ function normalize(value: unknown): string {
 }
 
 function normalizeHeader(value: string): string {
-    return normalize(value).replace(/[^a-z0-9 ]/g, "").trim();
+    return normalize(value)
+        .replace(/[^a-z0-9 ]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
 }
 
 function isNotApplicable(value: unknown): boolean {
@@ -253,26 +269,48 @@ const HEADER_ALIASES: Record<ImportField, string[]> = {
     ],
 };
 
-export function suggestColumnMapping(headers: string[]): ColumnMapping {
-    const result: ColumnMapping = { ...EMPTY_COLUMN_MAPPING };
+/**
+ * Matches headers with additional unit or currency information.
+ *
+ * Examples:
+ * - Company Name
+ * - CTC (LPA)
+ * - Stipend (KPM)
+ * - Monthly Stipend (INR, KPM)
+ * - Annual Salary (USD)
+ */
+export function suggestColumnMapping(
+    headers: string[],
+): ColumnMapping {
+    const result: ColumnMapping = {
+        ...EMPTY_COLUMN_MAPPING,
+    };
+
     const usedColumns = new Set<number>();
 
     for (const fieldInfo of IMPORT_FIELD_INFO) {
         const field = fieldInfo.field;
 
-        const aliases = new Set(
-            HEADER_ALIASES[field].map(normalizeHeader),
-        );
+        const aliases = HEADER_ALIASES[field]
+            .map(normalizeHeader)
+            .sort((a, b) => b.length - a.length);
 
-        const exactIndex = headers.findIndex(
-            (header, index) =>
-                !usedColumns.has(index) &&
-                aliases.has(normalizeHeader(header)),
-        );
+        const matchedIndex = headers.findIndex((header, index) => {
+            if (usedColumns.has(index)) return false;
 
-        if (exactIndex !== -1) {
-            result[field] = exactIndex;
-            usedColumns.add(exactIndex);
+            const normalized = normalizeHeader(header);
+
+            return aliases.some(
+                (alias) =>
+                    normalized === alias ||
+                    normalized.startsWith(`${alias} `) ||
+                    normalized.endsWith(` ${alias}`),
+            );
+        });
+
+        if (matchedIndex !== -1) {
+            result[field] = matchedIndex;
+            usedColumns.add(matchedIndex);
         }
     }
 
@@ -280,30 +318,55 @@ export function suggestColumnMapping(headers: string[]): ColumnMapping {
 }
 
 /**
- * Detects a currency explicitly written in a cell or header.
- * It does not guess a currency from a number alone.
+ * Detects a currency from a value or header.
+ *
+ * Generic symbols such as $ and ¥ are deliberately treated as
+ * ambiguous. The selected fallback currency is used instead,
+ * with a warning asking the user to review the result.
  */
-function detectCurrencyInText(value: unknown): CurrencyCode | null {
+function detectCurrencyInText(
+    value: unknown,
+): CurrencyDetection {
     const raw = textOf(value);
 
-    if (!raw) return null;
+    if (!raw) {
+        return {
+            currency: null,
+            ambiguous: false,
+        };
+    }
 
     const upper = raw.toUpperCase();
 
-    // Prefer explicit ISO currency codes, which are less ambiguous
-    // than symbols such as "$".
+    // Explicit ISO codes take priority over symbols.
     for (const code of CURRENCY_CODES) {
-        const codePattern = new RegExp(`\\b${code}\\b`, "i");
+        const pattern = new RegExp(`\\b${code}\\b`, "i");
 
-        if (codePattern.test(upper)) {
-            return code;
+        if (pattern.test(upper)) {
+            return {
+                currency: code,
+                ambiguous: false,
+            };
         }
     }
 
-    // Match longer symbols first so CA$ and US$ aren't mistaken for "$".
-    for (const item of CURRENCY_SYMBOLS) {
+    // Country-specific symbols are more reliable than generic symbols.
+    for (const item of SPECIFIC_CURRENCY_SYMBOLS) {
         if (upper.includes(item.symbol.toUpperCase())) {
-            return item.currency;
+            return {
+                currency: item.currency,
+                ambiguous: false,
+            };
+        }
+    }
+
+    // Unambiguous symbols.
+    for (const item of UNIQUE_CURRENCY_SYMBOLS) {
+        if (raw.includes(item.symbol)) {
+            return {
+                currency: item.currency,
+                ambiguous: false,
+            };
         }
     }
 
@@ -322,11 +385,29 @@ function detectCurrencyInText(value: unknown): CurrencyCode | null {
 
     for (const [pattern, currency] of aliases) {
         if (pattern.test(upper)) {
-            return currency;
+            return {
+                currency,
+                ambiguous: false,
+            };
         }
     }
 
-    return null;
+    // These symbols are shared by multiple currencies.
+    if (
+        raw.includes("$") ||
+        raw.includes("¥") ||
+        raw.includes("₨")
+    ) {
+        return {
+            currency: null,
+            ambiguous: true,
+        };
+    }
+
+    return {
+        currency: null,
+        ambiguous: false,
+    };
 }
 
 type CurrencyResolution = {
@@ -335,21 +416,29 @@ type CurrencyResolution = {
 };
 
 function distinctCurrencies(
-    values: Array<CurrencyCode | null>,
+    detections: CurrencyDetection[],
 ): CurrencyCode[] {
-    return [...new Set(values.filter(
-        (value): value is CurrencyCode => value !== null,
-    ))];
+    return [
+        ...new Set(
+            detections
+                .map((detection) => detection.currency)
+                .filter(
+                    (currency): currency is CurrencyCode =>
+                        currency !== null,
+                ),
+        ),
+    ];
 }
 
 /**
- * Currency precedence:
- * 1. An explicit, valid mapped currency value for this row.
- * 2. Currency identified in compensation values.
- * 3. Currency identified in compensation column headers.
- * 4. The selected default/fallback currency.
+ * Currency precedence in automatic mode:
  *
- * Conflicting detected currencies are not guessed.
+ * 1. Explicit mapped currency for the row.
+ * 2. Currency found in the compensation values.
+ * 3. Currency found in the compensation headers.
+ * 4. Selected fallback currency.
+ *
+ * Conflicting or ambiguous signals generate warnings.
  */
 function resolveCurrency(
     mappedValue: unknown,
@@ -359,29 +448,53 @@ function resolveCurrency(
     stipendHeader: string,
     ctcHeader: string,
     fallback: CurrencyCode,
+    mode: CurrencyMode,
 ): CurrencyResolution {
     const warnings: string[] = [];
+
+    if (mode === "fixed") {
+        return {
+            currency: fallback,
+            warnings,
+        };
+    }
+
     const explicitCurrencyText = textOf(mappedValue);
 
     if (currencyColumnMapped && explicitCurrencyText) {
-        const mappedCurrency = detectCurrencyInText(explicitCurrencyText);
+        const detection = detectCurrencyInText(explicitCurrencyText);
 
-        if (mappedCurrency) {
+        if (detection.currency) {
             return {
-                currency: mappedCurrency,
+                currency: detection.currency,
                 warnings,
             };
         }
 
-        warnings.push(
-            `Currency "${explicitCurrencyText}" was not recognized. Automatic detection and the fallback currency were used instead.`,
-        );
+        if (detection.ambiguous) {
+            warnings.push(
+                `Currency value "${explicitCurrencyText}" is ambiguous. Automatic detection and the fallback currency were used.`,
+            );
+        } else {
+            warnings.push(
+                `Currency "${explicitCurrencyText}" was not recognized. Automatic detection and the fallback currency were used instead.`,
+            );
+        }
     }
 
-    const currenciesInValues = distinctCurrencies([
+    const valueDetections = [
         detectCurrencyInText(stipendValue),
         detectCurrencyInText(ctcValue),
-    ]);
+    ];
+
+    const currenciesInValues = distinctCurrencies(valueDetections);
+
+    const headerDetections = [
+        detectCurrencyInText(stipendHeader),
+        detectCurrencyInText(ctcHeader),
+    ];
+
+    const currenciesInHeaders = distinctCurrencies(headerDetections);
 
     if (currenciesInValues.length > 1) {
         warnings.push(
@@ -394,18 +507,6 @@ function resolveCurrency(
         };
     }
 
-    if (currenciesInValues.length === 1) {
-        return {
-            currency: currenciesInValues[0],
-            warnings,
-        };
-    }
-
-    const currenciesInHeaders = distinctCurrencies([
-        detectCurrencyInText(stipendHeader),
-        detectCurrencyInText(ctcHeader),
-    ]);
-
     if (currenciesInHeaders.length > 1) {
         warnings.push(
             `Conflicting currencies were found in the compensation headers. ${fallback} was used; review this row.`,
@@ -417,11 +518,50 @@ function resolveCurrency(
         };
     }
 
-    if (currenciesInHeaders.length === 1) {
+    const valueCurrency = currenciesInValues[0] ?? null;
+    const headerCurrency = currenciesInHeaders[0] ?? null;
+
+    if (
+        valueCurrency &&
+        headerCurrency &&
+        valueCurrency !== headerCurrency
+    ) {
+        warnings.push(
+            `The compensation value indicates ${valueCurrency}, while the column header indicates ${headerCurrency}. The value's currency was used; review this row.`,
+        );
+    }
+
+    if (valueCurrency) {
+        if (
+            valueDetections.some((detection) => detection.ambiguous)
+        ) {
+            warnings.push(
+                "An additional ambiguous currency symbol was found in a compensation value. Review this row.",
+            );
+        }
+
         return {
-            currency: currenciesInHeaders[0],
+            currency: valueCurrency,
             warnings,
         };
+    }
+
+    if (headerCurrency) {
+        return {
+            currency: headerCurrency,
+            warnings,
+        };
+    }
+
+    const hasAmbiguousSignal = [
+        ...valueDetections,
+        ...headerDetections,
+    ].some((detection) => detection.ambiguous);
+
+    if (hasAmbiguousSignal) {
+        warnings.push(
+            `A currency symbol such as $, ¥, or ₨ could not be identified reliably. ${fallback} was used; review this row.`,
+        );
     }
 
     return {
@@ -453,7 +593,9 @@ function headerSpecifiesLpa(header: string): boolean {
     );
 }
 
-function headerSpecifiesThousandsPerMonth(header: string): boolean {
+function headerSpecifiesThousandsPerMonth(
+    header: string,
+): boolean {
     return (
         /\bKPM\b/i.test(header) ||
         /\bK\s*(?:\/|PER)\s*M(?:ONTH)?\b/i.test(header) ||
@@ -473,10 +615,34 @@ function cellSpecifiesLpa(value: string): boolean {
 
 function cellSpecifiesThousands(value: string): boolean {
     return (
-        /k\b/i.test(value) ||
+        /\d[\d,]*(?:\.\d+)?\s*k\b/i.test(value) ||
         /\bKPM\b/i.test(value) ||
         /\bTHOUSANDS?\b/i.test(value)
     );
+}
+
+function cellSpecifiesFullAnnualAmount(value: string): boolean {
+    return /\b(per year|per annum|annually|annual)\b/i.test(value);
+}
+
+function emptyCompensationResult(): CompensationParse {
+    return {
+        value: null,
+        isNotApplicable: false,
+        needsUnitConfirmation: false,
+        ambiguousValue: null,
+        errors: [],
+        warnings: [],
+    };
+}
+
+function invalidCompensation(
+    message: string,
+): CompensationParse {
+    return {
+        ...emptyCompensationResult(),
+        errors: [message],
+    };
 }
 
 function parseCompensation(
@@ -489,43 +655,27 @@ function parseCompensation(
     const raw = textOf(rawValue);
 
     if (!mapped) {
-        return {
-            value: null,
-            isNotApplicable: false,
-            needsUnitConfirmation: false,
-            ambiguousValue: null,
-            errors: [],
-            warnings: [],
-        };
+        return emptyCompensationResult();
     }
 
     if (isNotApplicable(raw)) {
         return {
-            value: null,
+            ...emptyCompensationResult(),
             isNotApplicable: true,
-            needsUnitConfirmation: false,
-            ambiguousValue: null,
-            errors: [],
-            warnings: [],
         };
     }
 
     if (raw === "" || isTbd(raw)) {
         return {
+            ...emptyCompensationResult(),
             value: { kind: "tbd" },
-            isNotApplicable: false,
-            needsUnitConfirmation: false,
-            ambiguousValue: null,
-            errors: [],
-            warnings: [],
         };
     }
 
-    const explicitLpaInCell =
-        field === "ctc" && cellSpecifiesLpa(raw);
+    const isCtc = field === "ctc";
 
-    const lpaInHeader =
-        field === "ctc" && headerSpecifiesLpa(sourceHeader);
+    const lpaInCell = isCtc && cellSpecifiesLpa(raw);
+    const lpaInHeader = isCtc && headerSpecifiesLpa(sourceHeader);
 
     const thousandsInCell = cellSpecifiesThousands(raw);
 
@@ -533,140 +683,155 @@ function parseCompensation(
         field === "stipend" &&
         headerSpecifiesThousandsPerMonth(sourceHeader);
 
+    const fullAnnualInCell =
+        isCtc && cellSpecifiesFullAnnualAmount(raw);
+
+    const label = isCtc ? "CTC" : "Stipend";
+
     const amounts = parseNumericAmounts(raw);
 
-    if (
-        amounts.length === 0 ||
-        amounts.some((amount) => !Number.isFinite(amount))
-    ) {
-        return {
-            value: null,
-            isNotApplicable: false,
-            needsUnitConfirmation: false,
-            ambiguousValue: null,
-            errors: [
-                `${field === "ctc" ? "CTC" : "Stipend"} value "${raw}" could not be read as an amount, range, NA, or TBD.`,
-            ],
-            warnings: [],
-        };
+    if (amounts.length === 0) {
+        return invalidCompensation(
+            `${label} value "${raw}" could not be read as an amount, range, NA, or TBD.`,
+        );
     }
 
-    // A unit explicitly stated in the cell or header is sufficient.
-    // Don't ask for confirmation when the header already says LPA.
-    const hasExplicitCtcUnit =
-        explicitLpaInCell ||
-        lpaInHeader ||
-        thousandsInCell ||
-        /\b(per year|per annum|annually|annual)\b/i.test(raw);
+    if (amounts.length > 2) {
+        return invalidCompensation(
+            `${label} value "${raw}" contains too many numbers. Use a single amount or a two-value range.`,
+        );
+    }
 
     if (
-        field === "ctc" &&
-        amounts.length === 1 &&
-        amounts[0] > 0 &&
-        amounts[0] < 10000 &&
-        !hasExplicitCtcUnit &&
+        amounts.some(
+            (amount) => !Number.isFinite(amount) || amount < 0,
+        )
+    ) {
+        return invalidCompensation(
+            `${label} must be a valid non-negative amount.`,
+        );
+    }
+
+    // Conflicting unit signals should not silently multiply values.
+    if (
+        isCtc &&
+        lpaInHeader &&
+        (thousandsInCell || fullAnnualInCell) &&
+        !lpaInCell
+    ) {
+        return invalidCompensation(
+            `The CTC header "${sourceHeader}" indicates LPA, but the cell "${raw}" appears to specify a different unit. Correct the header or cell value before importing.`,
+        );
+    }
+
+    const ctcHasExplicitUnit =
+        lpaInCell ||
+        lpaInHeader ||
+        thousandsInCell ||
+        fullAnnualInCell;
+
+    // Small CTC numbers can represent either full amounts or LPA.
+    // Check both single values and ranges.
+    const hasSmallCtcAmount =
+        isCtc &&
+        amounts.some((amount) => amount > 0 && amount < 10000);
+
+    if (
+        hasSmallCtcAmount &&
+        !ctcHasExplicitUnit &&
         unitChoice === "unconfirmed"
     ) {
         return {
-            value: null,
-            isNotApplicable: false,
+            ...emptyCompensationResult(),
             needsUnitConfirmation: true,
             ambiguousValue: raw,
-            errors: [],
-            warnings: [],
         };
     }
 
     let factor = 1;
 
-    if (explicitLpaInCell || lpaInHeader) {
-        factor = 100000;
-    } else if (
-        thousandsInCell ||
-        thousandsInHeader ||
-        (field === "ctc" && unitChoice === "lpa")
-    ) {
-        factor = 1000;
-
-        // LPA is 100,000, not 1,000. The CTC choice below
-        // handles LPA separately when there is no header hint.
-        if (field === "ctc" && unitChoice === "lpa") {
+    if (isCtc) {
+        if (lpaInCell || lpaInHeader) {
+            factor = 100000;
+        } else if (thousandsInCell) {
+            factor = 1000;
+        } else if (unitChoice === "lpa") {
             factor = 100000;
         }
+    } else if (thousandsInCell || thousandsInHeader) {
+        factor = 1000;
     }
 
     const converted = amounts.map((amount) => amount * factor);
 
     if (
         converted.some(
-            (amount) => amount < 0 || !Number.isFinite(amount),
+            (amount) => !Number.isFinite(amount) || amount < 0,
         )
     ) {
-        return {
-            value: null,
-            isNotApplicable: false,
-            needsUnitConfirmation: false,
-            ambiguousValue: null,
-            errors: [
-                `${field === "ctc" ? "CTC" : "Stipend"} must be a non-negative amount.`,
-            ],
-            warnings: [],
-        };
+        return invalidCompensation(
+            `${label} must be a valid non-negative amount.`,
+        );
     }
 
-    if (converted.length >= 2) {
-        const min = converted[0];
-        const max = converted[1];
+    if (converted.length === 2 && converted[0] > converted[1]) {
+        return invalidCompensation(
+            `${label} range minimum cannot exceed its maximum.`,
+        );
+    }
 
-        if (min > max) {
-            return {
-                value: null,
-                isNotApplicable: false,
-                needsUnitConfirmation: false,
-                ambiguousValue: null,
-                errors: [
-                    `${field === "ctc" ? "CTC" : "Stipend"} range minimum cannot exceed its maximum.`,
-                ],
-                warnings: [],
-            };
-        }
+    const warnings: string[] = [];
 
-        return {
-            value: { kind: "range", min, max },
-            isNotApplicable: false,
-            needsUnitConfirmation: false,
-            ambiguousValue: null,
-            errors: [],
-            warnings: [],
-        };
+    if (lpaInHeader) {
+        warnings.push(
+            `The CTC header "${sourceHeader}" indicates LPA. The value was multiplied by 100,000.`,
+        );
+    } else if (lpaInCell) {
+        warnings.push(
+            `The value "${raw}" specifies LPA and was multiplied by 100,000.`,
+        );
+    }
+
+    if (thousandsInHeader) {
+        warnings.push(
+            `The stipend header "${sourceHeader}" indicates thousands per month. The value was multiplied by 1,000.`,
+        );
+    } else if (thousandsInCell && !lpaInCell) {
+        warnings.push(
+            `The value "${raw}" specifies thousands and was multiplied by 1,000.`,
+        );
     }
 
     if (
-        field === "ctc" &&
-        amounts[0] > 0 &&
-        amounts[0] < 10000 &&
-        !hasExplicitCtcUnit &&
+        isCtc &&
+        hasSmallCtcAmount &&
+        !ctcHasExplicitUnit &&
         unitChoice === "annual"
     ) {
-        return {
-            value: { kind: "fixed", amount: converted[0] },
-            isNotApplicable: false,
-            needsUnitConfirmation: false,
-            ambiguousValue: null,
-            errors: [],
-            warnings: [
-                `CTC "${raw}" was treated as a full annual amount, not LPA.`,
-            ],
-        };
+        warnings.push(
+            `CTC "${raw}" was treated as a full annual amount, not LPA.`,
+        );
     }
 
+    const value: Compensation =
+        converted.length === 2
+            ? {
+                kind: "range",
+                min: converted[0],
+                max: converted[1],
+            }
+            : {
+                kind: "fixed",
+                amount: converted[0],
+            };
+
     return {
-        value: { kind: "fixed", amount: converted[0] },
+        value,
         isNotApplicable: false,
         needsUnitConfirmation: false,
         ambiguousValue: null,
         errors: [],
-        warnings: [],
+        warnings,
     };
 }
 
@@ -679,25 +844,41 @@ function parseStatus(
 } {
     const raw = textOf(rawValue);
 
-    if (!raw) return { value: null, error: null };
+    if (!raw) {
+        return {
+            value: null,
+            error: null,
+        };
+    }
 
     const normalized = normalize(raw);
-    const value = STATUS_ALIASES[normalized] ?? normalized.replace(/ /g, "-");
+
+    const value =
+        STATUS_ALIASES[normalized] ?? normalized.replace(/ /g, "-");
 
     const allowed =
         section === "college-placement"
-            ? ["not-eligible", "applied", "not-applied", "placed", "not-placed"]
+            ? [
+                "not-eligible",
+                "applied",
+                "not-applied",
+                "placed",
+                "not-placed",
+            ]
             : ["applied", "placed", "not-placed"];
 
     if (allowed.includes(value)) {
-        return { value, error: null };
+        return {
+            value,
+            error: null,
+        };
     }
 
     return {
         value: null,
         error: `Status "${raw}" is not valid for ${section === "college-placement"
-                ? "College Placements"
-                : "Off Campus"
+            ? "College Placements"
+            : "Off Campus"
             }.`,
     };
 }
@@ -711,10 +892,17 @@ function parseStage(
 } {
     const raw = textOf(rawValue);
 
-    if (!raw) return { value: null, error: null };
+    if (!raw) {
+        return {
+            value: null,
+            error: null,
+        };
+    }
 
     const normalized = normalize(raw);
-    const value = STAGE_ALIASES[normalized] ?? normalized.replace(/ /g, "-");
+
+    const value =
+        STAGE_ALIASES[normalized] ?? normalized.replace(/ /g, "-");
 
     const allowed =
         section === "college-placement"
@@ -722,14 +910,17 @@ function parseStage(
             : ["screening", "oa", "interview", "offer"];
 
     if (allowed.includes(value)) {
-        return { value, error: null };
+        return {
+            value,
+            error: null,
+        };
     }
 
     return {
         value: null,
         error: `Stage "${raw}" is not valid for ${section === "college-placement"
-                ? "College Placements"
-                : "Off Campus"
+            ? "College Placements"
+            : "Off Campus"
             }.`,
     };
 }
@@ -742,14 +933,18 @@ function inferRoleType(
     const stipendMapped = mapping.stipend !== null;
     const ctcMapped = mapping.ctc !== null;
 
-    if (!stipendMapped && !ctcMapped) return null;
+    if (!stipendMapped && !ctcMapped) {
+        return null;
+    }
 
     const stipendText = textOf(stipendValue);
     const ctcText = textOf(ctcValue);
 
     const stipendNA =
         stipendMapped && isNotApplicable(stipendValue);
-    const ctcNA = ctcMapped && isNotApplicable(ctcValue);
+
+    const ctcNA =
+        ctcMapped && isNotApplicable(ctcValue);
 
     if (stipendMapped && !ctcMapped) {
         return stipendNA ? null : "internship";
@@ -759,12 +954,20 @@ function inferRoleType(
         return ctcNA ? null : "full-time";
     }
 
-    if ((stipendNA && ctcNA) || (!stipendText && !ctcText)) {
+    if (
+        (stipendNA && ctcNA) ||
+        (!stipendText && !ctcText)
+    ) {
         return null;
     }
 
-    if (stipendNA) return "full-time";
-    if (ctcNA) return "internship";
+    if (stipendNA) {
+        return "full-time";
+    }
+
+    if (ctcNA) {
+        return "internship";
+    }
 
     return "internship-plus-full-time";
 }
@@ -774,7 +977,9 @@ function applicableCompensation(
     label: string,
     warnings: string[],
 ): Compensation {
-    if (parsed.value !== null) return parsed.value;
+    if (parsed.value !== null) {
+        return parsed.value;
+    }
 
     if (parsed.isNotApplicable) {
         warnings.push(
@@ -782,7 +987,9 @@ function applicableCompensation(
         );
     }
 
-    return { kind: "tbd" };
+    return {
+        kind: "tbd",
+    };
 }
 
 export function parseImportRow(
@@ -794,25 +1001,31 @@ export function parseImportRow(
     ctcUnitChoice: CtcUnitChoice = "unconfirmed",
     roleTypeChoice: RoleTypeChoice = "unconfirmed",
     sourceHeaders: string[] = [],
+    currencyMode: CurrencyMode = "auto",
 ): ParsedImportRow {
     const errors: string[] = [];
     const warnings: string[] = [];
 
     const mappedValue = (field: ImportField): unknown => {
         const columnIndex = mapping[field];
-        return columnIndex === null ? null : cells[columnIndex];
+
+        return columnIndex === null
+            ? null
+            : cells[columnIndex];
     };
 
     const mappedHeader = (field: ImportField): string => {
         const columnIndex = mapping[field];
 
-        if (columnIndex === null) return "";
-
-        return sourceHeaders[columnIndex] ?? "";
+        return columnIndex === null
+            ? ""
+            : sourceHeaders[columnIndex] ?? "";
     };
 
     if (mapping.companyName === null) {
-        errors.push("Map a column to Company name before importing.");
+        errors.push(
+            "Map a column to Company name before importing.",
+        );
     }
 
     const companyName = textOf(mappedValue("companyName"));
@@ -859,7 +1072,9 @@ export function parseImportRow(
     errors.push(...stipendParse.errors, ...ctcParse.errors);
     warnings.push(...stipendParse.warnings, ...ctcParse.warnings);
 
-    const needsCtcUnitConfirmation = ctcParse.needsUnitConfirmation;
+    const needsCtcUnitConfirmation =
+        ctcParse.needsUnitConfirmation;
+
     const ambiguousCtcValue = ctcParse.ambiguousValue;
 
     const currencyResolution = resolveCurrency(
@@ -870,12 +1085,20 @@ export function parseImportRow(
         mappedHeader("stipend"),
         mappedHeader("ctc"),
         defaultCurrency,
+        currencyMode,
     );
 
     warnings.push(...currencyResolution.warnings);
 
-    const status = parseStatus(mappedValue("status"), section);
-    const stage = parseStage(mappedValue("reachedStage"), section);
+    const status = parseStatus(
+        mappedValue("status"),
+        section,
+    );
+
+    const stage = parseStage(
+        mappedValue("reachedStage"),
+        section,
+    );
 
     if (status.error) errors.push(status.error);
     if (stage.error) errors.push(stage.error);
@@ -890,7 +1113,8 @@ export function parseImportRow(
         const compensationFor = (
             parsed: CompensationParse,
             label: string,
-        ): Compensation => applicableCompensation(parsed, label, warnings);
+        ): Compensation =>
+            applicableCompensation(parsed, label, warnings);
 
         const stipend =
             roleType === "full-time"
@@ -992,5 +1216,6 @@ export function parseImportRow(
         ambiguousCtcValue,
         needsRoleTypeConfirmation,
         roleType,
+        currency: currencyResolution.currency,
     };
 }

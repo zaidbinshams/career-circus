@@ -8,13 +8,16 @@ import {
     Upload,
     X,
 } from "lucide-react";
+
 import {
     CURRENCY_CODES,
     type ApplicationDraft,
     type ApplicationSection,
     type CurrencyCode,
 } from "../types/application";
+
 import { formatCompensation } from "../utils/compensation";
+
 import {
     IMPORT_FIELD_INFO,
     parseImportRow,
@@ -22,10 +25,12 @@ import {
     EMPTY_COLUMN_MAPPING,
     type ColumnMapping,
     type CtcUnitChoice,
+    type CurrencyMode,
     type ImportField,
     type ParsedImportRow,
     type RoleTypeChoice,
 } from "../utils/spreadsheetImport";
+
 import "./ImportApplications.css";
 
 export type ImportCommitResult = {
@@ -78,7 +83,11 @@ function readSheetRows(
 
     return XLSX.utils.sheet_to_json<unknown[]>(worksheet, {
         header: 1,
+
+        // Use formatted cell values where available. This helps retain
+        // currency symbols and other display formatting from Excel.
         raw: false,
+
         defval: null,
         blankrows: true,
     });
@@ -86,7 +95,11 @@ function readSheetRows(
 
 function textOf(value: unknown): string {
     if (value === null || value === undefined) return "";
-    if (value instanceof Date) return value.toLocaleDateString();
+
+    if (value instanceof Date) {
+        return value.toLocaleDateString();
+    }
+
     return String(value).trim();
 }
 
@@ -116,7 +129,9 @@ function canImportRow(row: PreviewRow): boolean {
 }
 
 function getSkippedReason(row: PreviewRow): string[] {
-    if (row.errors.length > 0) return row.errors;
+    if (row.errors.length > 0) {
+        return row.errors;
+    }
 
     const reasons: string[] = [];
 
@@ -132,7 +147,9 @@ function getSkippedReason(row: PreviewRow): string[] {
         );
     }
 
-    if (reasons.length > 0) return reasons;
+    if (reasons.length > 0) {
+        return reasons;
+    }
 
     if (!row.draft) {
         return ["Required fields are missing or invalid."];
@@ -163,7 +180,9 @@ function SheetRowPreview({
     const canImport = canImportRow(row);
 
     const rawRole =
-        mapping.role === null ? "" : textOf(row.cells[mapping.role]);
+        mapping.role === null
+            ? ""
+            : textOf(row.cells[mapping.role]);
 
     return (
         <tr>
@@ -173,7 +192,9 @@ function SheetRowPreview({
                     aria-label={`Select spreadsheet row ${row.sourceRow}`}
                     checked={selected}
                     disabled={!canImport}
-                    onChange={(event) => onSelect(event.target.checked)}
+                    onChange={(event) =>
+                        onSelect(event.target.checked)
+                    }
                 />
             </td>
 
@@ -181,7 +202,11 @@ function SheetRowPreview({
 
             <td>
                 {row.draft?.companyName ??
-                    displayMappedCell(row.cells, mapping, "companyName")}
+                    displayMappedCell(
+                        row.cells,
+                        mapping,
+                        "companyName",
+                    )}
             </td>
 
             <td>
@@ -192,6 +217,7 @@ function SheetRowPreview({
                         <span className="sr-only">
                             Role type for row {row.sourceRow}
                         </span>
+
                         <select
                             value={roleTypeChoice}
                             onChange={(event) =>
@@ -203,8 +229,15 @@ function SheetRowPreview({
                             <option value="unconfirmed">
                                 Choose role type…
                             </option>
-                            <option value="internship">Internship</option>
-                            <option value="full-time">Full-time</option>
+
+                            <option value="internship">
+                                Internship
+                            </option>
+
+                            <option value="full-time">
+                                Full-time
+                            </option>
+
                             <option value="internship-plus-full-time">
                                 Internship + full-time
                             </option>
@@ -216,23 +249,31 @@ function SheetRowPreview({
             <td>{row.draft?.role ?? (rawRole || "TBD")}</td>
 
             <td>
-                {row.draft
-                    ? formatCompensation(
+                {row.draft ? (
+                    formatCompensation(
                         row.draft.stipend,
                         "stipend",
                         row.draft.currency,
                     )
-                    : displayMappedCell(row.cells, mapping, "stipend")}
+                ) : (
+                    displayMappedCell(
+                        row.cells,
+                        mapping,
+                        "stipend",
+                    )
+                )}
             </td>
 
             <td>
                 {row.needsCtcUnitConfirmation ? (
                     <div className="ctc-unit-review">
                         <strong>{row.ambiguousCtcValue}</strong>
+
                         <label>
                             <span className="sr-only">
                                 CTC unit for row {row.sourceRow}
                             </span>
+
                             <select
                                 value={ctcUnitChoice}
                                 onChange={(event) =>
@@ -244,9 +285,11 @@ function SheetRowPreview({
                                 <option value="unconfirmed">
                                     Confirm unit…
                                 </option>
+
                                 <option value="annual">
                                     Full annual amount
                                 </option>
+
                                 <option value="lpa">
                                     LPA (multiply by 100,000)
                                 </option>
@@ -260,29 +303,46 @@ function SheetRowPreview({
                         row.draft.currency,
                     )
                 ) : (
-                    displayMappedCell(row.cells, mapping, "ctc")
+                    displayMappedCell(
+                        row.cells,
+                        mapping,
+                        "ctc",
+                    )
                 )}
             </td>
+
+            <td>{row.currency}</td>
 
             <td>
                 {row.draft
                     ? row.draft.status ?? "Not set"
-                    : displayMappedCell(row.cells, mapping, "status")}
+                    : displayMappedCell(
+                        row.cells,
+                        mapping,
+                        "status",
+                    )}
             </td>
 
             <td>
                 {row.draft
                     ? row.draft.reachedStage ?? "Not set"
-                    : displayMappedCell(row.cells, mapping, "reachedStage")}
+                    : displayMappedCell(
+                        row.cells,
+                        mapping,
+                        "reachedStage",
+                    )}
             </td>
 
             <td>
                 {row.errors.length > 0 ? (
                     <div className="import-row-issues import-row-issues--error">
                         <strong>Cannot import</strong>
+
                         <ul>
                             {row.errors.map((error, index) => (
-                                <li key={`${error}-${index}`}>{error}</li>
+                                <li key={`${error}-${index}`}>
+                                    {error}
+                                </li>
                             ))}
                         </ul>
                     </div>
@@ -308,6 +368,7 @@ function SheetRowPreview({
                 ) : row.warnings.length > 0 ? (
                     <div className="import-row-issues">
                         <strong>Review notes</strong>
+
                         <ul>
                             {row.warnings.map((warning, index) => (
                                 <li key={`${warning}-${index}`}>
@@ -334,7 +395,9 @@ export default function ImportApplications({
     onCancel,
     onAddSkippedManually,
 }: ImportApplicationsProps) {
-    const [workbook, setWorkbook] = useState<XLSX.WorkBook | null>(null);
+    const [workbook, setWorkbook] =
+        useState<XLSX.WorkBook | null>(null);
+
     const [fileName, setFileName] = useState("");
     const [sheetName, setSheetName] = useState("");
     const [headerRow, setHeaderRow] = useState(0);
@@ -349,8 +412,13 @@ export default function ImportApplications({
             : availableSections[0] ?? "college-placement",
     );
 
+    // In automatic mode, this is the fallback currency.
+    // In fixed mode, it is applied to every imported row.
     const [defaultCurrency, setDefaultCurrency] =
         useState<CurrencyCode>("INR");
+
+    const [currencyMode, setCurrencyMode] =
+        useState<CurrencyMode>("auto");
 
     const [ctcUnitChoices, setCtcUnitChoices] =
         useState<Record<number, CtcUnitChoice>>({});
@@ -362,8 +430,11 @@ export default function ImportApplications({
         () => new Set(),
     );
 
-    const [fileError, setFileError] = useState<string | null>(null);
-    const [summary, setSummary] = useState<ImportSummary | null>(null);
+    const [fileError, setFileError] =
+        useState<string | null>(null);
+
+    const [summary, setSummary] =
+        useState<ImportSummary | null>(null);
 
     const matrix = useMemo(
         () =>
@@ -379,6 +450,7 @@ export default function ImportApplications({
         () =>
             headers.map((value, index) => {
                 const header = textOf(value);
+
                 return header || `Column ${index + 1}`;
             }),
         [headers],
@@ -391,10 +463,13 @@ export default function ImportApplications({
             headers.length,
         );
 
-    const columns = Array.from({ length: columnCount }, (_, index) => ({
-        index,
-        header: headerStrings[index] ?? `Column ${index + 1}`,
-    }));
+    const columns = Array.from(
+        { length: columnCount },
+        (_, index) => ({
+            index,
+            header: headerStrings[index] ?? `Column ${index + 1}`,
+        }),
+    );
 
     const sourceRows: SourceRow[] = useMemo(
         () =>
@@ -433,6 +508,8 @@ export default function ImportApplications({
                 defaultCurrency,
                 ctcUnitChoices[row.sourceRow] ?? "unconfirmed",
                 roleTypeChoices[row.sourceRow] ?? "unconfirmed",
+                headerStrings,
+                currencyMode,
             ),
         }));
     }, [
@@ -440,12 +517,14 @@ export default function ImportApplications({
         mapping,
         section,
         defaultCurrency,
+        currencyMode,
         ctcUnitChoices,
         roleTypeChoices,
+        headerStrings,
         tooManyRows,
     ]);
 
-    // Start by selecting all rows that are fully valid and unambiguous.
+    // Automatically select valid, unambiguous rows.
     useEffect(() => {
         setSelectedRows(
             new Set(
@@ -456,8 +535,11 @@ export default function ImportApplications({
         );
     }, [previewRows]);
 
+    // Currency is optional because automatic detection is available.
     const missingFields = IMPORT_FIELD_INFO.filter(
-        (item) => mapping[item.field] === null,
+        (item) =>
+            item.field !== "currency" &&
+            mapping[item.field] === null,
     );
 
     const validRows = previewRows.filter(canImportRow);
@@ -486,12 +568,16 @@ export default function ImportApplications({
         setFileName("");
 
         if (file.size > MAX_FILE_SIZE) {
-            setFileError("The file exceeds the 20 MB import limit.");
+            setFileError(
+                "The file exceeds the 20 MB import limit.",
+            );
             return;
         }
 
         if (!/\.(xlsx|xls|xlsm|csv)$/i.test(file.name)) {
-            setFileError("Choose an .xlsx, .xls, .xlsm, or .csv file.");
+            setFileError(
+                "Choose an .xlsx, .xls, .xlsm, or .csv file.",
+            );
             return;
         }
 
@@ -504,7 +590,9 @@ export default function ImportApplications({
             });
 
             if (parsed.SheetNames.length === 0) {
-                setFileError("No worksheets were found in this file.");
+                setFileError(
+                    "No worksheets were found in this file.",
+                );
                 return;
             }
 
@@ -554,16 +642,20 @@ export default function ImportApplications({
         setMapping((current) => {
             const next = { ...current };
 
-            // Keep the mapping one-to-one: a source column maps to one field.
+            // Keep mapping one-to-one.
             if (index !== null) {
                 for (const key of Object.keys(next) as ImportField[]) {
-                    if (key !== field && next[key] === index) {
+                    if (
+                        key !== field &&
+                        next[key] === index
+                    ) {
                         next[key] = null;
                     }
                 }
             }
 
             next[field] = index;
+
             return next;
         });
 
@@ -579,7 +671,10 @@ export default function ImportApplications({
         setSummary(null);
     }
 
-    function setRowSelected(sourceRow: number, checked: boolean) {
+    function setRowSelected(
+        sourceRow: number,
+        checked: boolean,
+    ) {
         setSelectedRows((current) => {
             const next = new Set(current);
 
@@ -639,6 +734,16 @@ export default function ImportApplications({
         setSummary(null);
     }
 
+    function changeCurrencyMode(nextMode: CurrencyMode) {
+        setCurrencyMode(nextMode);
+        setSummary(null);
+    }
+
+    function changeDefaultCurrency(nextCurrency: CurrencyCode) {
+        setDefaultCurrency(nextCurrency);
+        setSummary(null);
+    }
+
     function commitImport() {
         const rowsToImport = previewRows.filter(
             (row) =>
@@ -649,7 +754,9 @@ export default function ImportApplications({
         if (rowsToImport.length === 0) return;
 
         const result = onImport(
-            rowsToImport.map((row) => row.draft as ApplicationDraft),
+            rowsToImport.map(
+                (row) => row.draft as ApplicationDraft,
+            ),
         );
 
         const importedSourceRows = new Set(
@@ -657,7 +764,10 @@ export default function ImportApplications({
         );
 
         const skippedRows: SkippedRow[] = previewRows
-            .filter((row) => !importedSourceRows.has(row.sourceRow))
+            .filter(
+                (row) =>
+                    !importedSourceRows.has(row.sourceRow),
+            )
             .map((row) => ({
                 sourceRow: row.sourceRow,
                 reasons: getSkippedReason(row),
@@ -666,10 +776,13 @@ export default function ImportApplications({
         setSummary({
             importedCount: result.importedCount,
             skippedRows,
-            omittedFields: missingFields.map((item) => item.field),
+            omittedFields: missingFields.map(
+                (item) => item.field,
+            ),
             warnings: rowsToImport.flatMap((row) =>
                 row.warnings.map(
-                    (warning) => `Row ${row.sourceRow}: ${warning}`,
+                    (warning) =>
+                        `Row ${row.sourceRow}: ${warning}`,
                 ),
             ),
             errors: result.errors,
@@ -685,8 +798,12 @@ export default function ImportApplications({
                     </div>
 
                     <div>
-                        <p className="form-eyebrow">IMPORT REVIEW</p>
+                        <p className="form-eyebrow">
+                            IMPORT REVIEW
+                        </p>
+
                         <h2>Import summary</h2>
+
                         <p className="form-description">
                             Your selected valid rows have been added to the dashboard.
                         </p>
@@ -707,6 +824,7 @@ export default function ImportApplications({
                         <span>Imported</span>
                         <strong>{summary.importedCount}</strong>
                     </div>
+
                     <div>
                         <span>Not imported</span>
                         <strong>{summary.skippedRows.length}</strong>
@@ -716,11 +834,17 @@ export default function ImportApplications({
                 {summary.errors.length > 0 && (
                     <div className="import-notice import-notice--warning">
                         <AlertTriangle size={17} />
+
                         <div>
-                            <strong>Some records could not be saved</strong>
+                            <strong>
+                                Some records could not be saved
+                            </strong>
+
                             <ul>
                                 {summary.errors.map((error, index) => (
-                                    <li key={`${error}-${index}`}>{error}</li>
+                                    <li key={`${error}-${index}`}>
+                                        {error}
+                                    </li>
                                 ))}
                             </ul>
                         </div>
@@ -730,17 +854,25 @@ export default function ImportApplications({
                 {summary.omittedFields.length > 0 && (
                     <div className="import-notice">
                         <AlertTriangle size={17} />
+
                         <div>
                             <strong>Columns not mapped</strong>
+
                             <p>
                                 {summary.omittedFields
-                                    .map((field) => FIELD_LABELS[field])
+                                    .map(
+                                        (field) =>
+                                            FIELD_LABELS[field],
+                                    )
                                     .join(", ")}
                             </p>
+
                             <p>
                                 Missing optional details can be filled in later by editing
-                                the imported application. Rows without a company name, with invalid values,
-                                or needing an unresolved role-type or CTC-unit choice are not imported.
+                                the imported application. Rows without a company name, with
+                                invalid values, or needing an unresolved role-type or
+                                CTC-unit choice are not imported. Currency can be detected
+                                automatically or assigned using the currency settings.
                             </p>
                         </div>
                     </div>
@@ -752,9 +884,12 @@ export default function ImportApplications({
                             Review {summary.warnings.length} import note
                             {summary.warnings.length === 1 ? "" : "s"}
                         </summary>
+
                         <ul>
                             {summary.warnings.map((warning, index) => (
-                                <li key={`${warning}-${index}`}>{warning}</li>
+                                <li key={`${warning}-${index}`}>
+                                    {warning}
+                                </li>
                             ))}
                         </ul>
                     </details>
@@ -763,18 +898,26 @@ export default function ImportApplications({
                 {summary.skippedRows.length > 0 && (
                     <div className="import-skipped-list">
                         <h3>Rows to review or add manually</h3>
+
                         <p>
                             These source rows were excluded from the import. You can add
                             missing applications using the manual entry form.
                         </p>
 
                         <ul>
-                            {summary.skippedRows.slice(0, 30).map((row) => (
-                                <li key={row.sourceRow}>
-                                    <strong>Row {row.sourceRow}</strong>
-                                    <span>{row.reasons.join(" ")}</span>
-                                </li>
-                            ))}
+                            {summary.skippedRows
+                                .slice(0, 30)
+                                .map((row) => (
+                                    <li key={row.sourceRow}>
+                                        <strong>
+                                            Row {row.sourceRow}
+                                        </strong>
+
+                                        <span>
+                                            {row.reasons.join(" ")}
+                                        </span>
+                                    </li>
+                                ))}
                         </ul>
 
                         {summary.skippedRows.length > 30 && (
@@ -790,7 +933,9 @@ export default function ImportApplications({
                         <button
                             type="button"
                             className="form-button form-button--secondary"
-                            onClick={() => onAddSkippedManually(section)}
+                            onClick={() =>
+                                onAddSkippedManually(section)
+                            }
                         >
                             Open manual entry
                         </button>
@@ -816,8 +961,12 @@ export default function ImportApplications({
                 </div>
 
                 <div>
-                    <p className="form-eyebrow">SPREADSHEET IMPORT</p>
+                    <p className="form-eyebrow">
+                        SPREADSHEET IMPORT
+                    </p>
+
                     <h2>Import applications</h2>
+
                     <p className="form-description">
                         Map your spreadsheet columns, review the records, and choose
                         exactly which valid rows to import.
@@ -836,8 +985,10 @@ export default function ImportApplications({
 
             <div className="import-notice">
                 <Upload size={17} />
+
                 <div>
                     <strong>Your file stays in this browser</strong>
+
                     <p>
                         Only mapped fields are used. Other columns are ignored.
                         Review the preview before importing; invalid or ambiguous rows
@@ -846,10 +997,32 @@ export default function ImportApplications({
                 </div>
             </div>
 
+            <div className="import-notice">
+                <FileSpreadsheet size={17} />
+
+                <div>
+                    <strong>Units and currencies are handled automatically</strong>
+
+                    <p>
+                        CTC headers containing LPA or lakhs are multiplied by
+                        100,000. Stipend headers containing KPM or thousands per
+                        month are multiplied by 1,000. The preview shows the
+                        converted amounts and resolved currency before import.
+                    </p>
+                </div>
+            </div>
+
             <label className="import-file-picker">
                 <Upload size={22} />
-                <strong>{fileName || "Choose a spreadsheet"}</strong>
-                <span>Supported: XLSX, XLS, XLSM, CSV · Maximum 20 MB</span>
+
+                <strong>
+                    {fileName || "Choose a spreadsheet"}
+                </strong>
+
+                <span>
+                    Supported: XLSX, XLS, XLSM, CSV · Maximum 20 MB
+                </span>
+
                 <input
                     type="file"
                     accept=".xlsx,.xls,.xlsm,.csv"
@@ -868,9 +1041,12 @@ export default function ImportApplications({
                     <div className="import-settings-grid">
                         <label className="import-control">
                             <span>Worksheet</span>
+
                             <select
                                 value={sheetName}
-                                onChange={(event) => changeSheet(event.target.value)}
+                                onChange={(event) =>
+                                    changeSheet(event.target.value)
+                                }
                             >
                                 {workbook.SheetNames.map((name) => (
                                     <option key={name} value={name}>
@@ -882,10 +1058,13 @@ export default function ImportApplications({
 
                         <label className="import-control">
                             <span>Header row</span>
+
                             <select
                                 value={headerRow}
                                 onChange={(event) =>
-                                    changeHeaderRow(Number(event.target.value))
+                                    changeHeaderRow(
+                                        Number(event.target.value),
+                                    )
                                 }
                             >
                                 {matrix.slice(0, 20).map((cells, index) => (
@@ -903,6 +1082,7 @@ export default function ImportApplications({
 
                         <label className="import-control">
                             <span>Import into</span>
+
                             <select
                                 value={section}
                                 onChange={(event) => {
@@ -923,11 +1103,43 @@ export default function ImportApplications({
                         </label>
 
                         <label className="import-control">
-                            <span>Default currency</span>
+                            <span>Currency handling</span>
+
+                            <select
+                                value={currencyMode}
+                                onChange={(event) =>
+                                    changeCurrencyMode(
+                                        event.target.value as CurrencyMode,
+                                    )
+                                }
+                            >
+                                <option value="auto">
+                                    Automatic detection
+                                </option>
+
+                                <option value="fixed">
+                                    One currency for all rows
+                                </option>
+                            </select>
+
+                            <small>
+                                {currencyMode === "auto"
+                                    ? "Uses a mapped currency column, then compensation values and headers. The selected fallback is used when currency cannot be identified."
+                                    : "Applies the selected currency to every imported row. Mapped currency values and detected symbols are ignored."}
+                            </small>
+                        </label>
+
+                        <label className="import-control">
+                            <span>
+                                {currencyMode === "auto"
+                                    ? "Fallback currency"
+                                    : "Currency for all rows"}
+                            </span>
+
                             <select
                                 value={defaultCurrency}
                                 onChange={(event) =>
-                                    setDefaultCurrency(
+                                    changeDefaultCurrency(
                                         event.target.value as CurrencyCode,
                                     )
                                 }
@@ -938,12 +1150,19 @@ export default function ImportApplications({
                                     </option>
                                 ))}
                             </select>
+
+                            <small>
+                                {currencyMode === "auto"
+                                    ? "Used when no reliable currency information is found."
+                                    : "Every imported application will use this currency."}
+                            </small>
                         </label>
                     </div>
 
                     <div className="import-section-heading">
                         <div>
                             <h3>Map your columns</h3>
+
                             <p>
                                 Automatic matches are suggestions. Check them and change
                                 any mapping that is incorrect.
@@ -961,79 +1180,126 @@ export default function ImportApplications({
                     </div>
 
                     <div className="import-mapping-grid">
-                        {IMPORT_FIELD_INFO.map((item) => (
-                            <label className="import-control" key={item.field}>
-                                <span>
-                                    {item.label}
-                                    {item.required && (
-                                        <span className="import-required">Required</span>
-                                    )}
-                                </span>
+                        {IMPORT_FIELD_INFO.map((item) => {
+                            const currencyMappingDisabled =
+                                item.field === "currency" &&
+                                currencyMode === "fixed";
 
-                                <select
-                                    value={
-                                        mapping[item.field] === null
-                                            ? ""
-                                            : String(mapping[item.field])
-                                    }
-                                    onChange={(event) =>
-                                        changeMapping(
-                                            item.field,
-                                            event.target.value === ""
-                                                ? null
-                                                : Number(event.target.value),
-                                        )
-                                    }
+                            let helpText = item.help;
+
+                            if (item.field === "currency") {
+                                helpText =
+                                    currencyMode === "auto"
+                                        ? "Optional per-row override. If mapped, recognized currency values in this column take priority over automatic detection."
+                                        : "This mapping is retained but ignored while one currency is applied to all rows.";
+                            }
+
+                            return (
+                                <label
+                                    className="import-control"
+                                    key={item.field}
                                 >
-                                    <option value="">Not mapped</option>
-                                    {columns.map((column) => {
-                                        const usedByOtherField = (
-                                            Object.keys(mapping) as ImportField[]
-                                        ).some(
-                                            (field) =>
-                                                field !== item.field &&
-                                                mapping[field] === column.index,
-                                        );
+                                    <span>
+                                        {item.label}
 
-                                        return (
-                                            <option
-                                                key={column.index}
-                                                value={column.index}
-                                                disabled={usedByOtherField}
-                                            >
-                                                {String.fromCharCode(
-                                                    65 + (column.index % 26),
-                                                )}
-                                                {column.index >= 26
-                                                    ? Math.floor(column.index / 26)
-                                                    : ""}{" "}
-                                                — {column.header}
-                                            </option>
-                                        );
-                                    })}
-                                </select>
+                                        {item.required && (
+                                            <span className="import-required">
+                                                Required
+                                            </span>
+                                        )}
+                                    </span>
 
-                                <small>{item.help}</small>
-                            </label>
-                        ))}
+                                    <select
+                                        value={
+                                            mapping[item.field] === null
+                                                ? ""
+                                                : String(
+                                                    mapping[item.field],
+                                                )
+                                        }
+                                        disabled={currencyMappingDisabled}
+                                        onChange={(event) =>
+                                            changeMapping(
+                                                item.field,
+                                                event.target.value === ""
+                                                    ? null
+                                                    : Number(
+                                                        event.target.value,
+                                                    ),
+                                            )
+                                        }
+                                    >
+                                        <option value="">
+                                            Not mapped
+                                        </option>
+
+                                        {columns.map((column) => {
+                                            const usedByOtherField = (
+                                                Object.keys(
+                                                    mapping,
+                                                ) as ImportField[]
+                                            ).some(
+                                                (field) =>
+                                                    field !== item.field &&
+                                                    mapping[field] ===
+                                                    column.index,
+                                            );
+
+                                            return (
+                                                <option
+                                                    key={column.index}
+                                                    value={column.index}
+                                                    disabled={usedByOtherField}
+                                                >
+                                                    {String.fromCharCode(
+                                                        65 +
+                                                        (column.index %
+                                                            26),
+                                                    )}
+                                                    {column.index >= 26
+                                                        ? Math.floor(
+                                                            column.index / 26,
+                                                        )
+                                                        : ""}{" "}
+                                                    — {column.header}
+                                                </option>
+                                            );
+                                        })}
+                                    </select>
+
+                                    <small>{helpText}</small>
+                                </label>
+                            );
+                        })}
                     </div>
 
                     {missingFields.length > 0 && (
                         <div className="import-notice import-notice--warning">
                             <AlertTriangle size={17} />
+
                             <div>
-                                <strong>Some website fields are not mapped</strong>
+                                <strong>
+                                    Some website fields are not mapped
+                                </strong>
+
                                 <p>
                                     {missingFields
-                                        .map((field) => FIELD_LABELS[field.field])
+                                        .map(
+                                            (field) =>
+                                                FIELD_LABELS[field.field],
+                                        )
                                         .join(", ")}
                                 </p>
+
                                 <p>
-                                    Company name is the only required column mapping. A blank or unmapped
-                                    role becomes TBD. Role type is inferred from stipend and CTC; rows
-                                    without enough compensation information need a role-type choice.
-                                    Missing status or stage remains blank. Missing applicable compensation
-                                    becomes TBD. If currency is not mapped, the selected default is used.
+                                    Company name is the only required column mapping.
+                                    A blank or unmapped role becomes TBD. Role type is
+                                    inferred from stipend and CTC; rows without enough
+                                    compensation information need a role-type choice.
+                                    Missing status or stage remains blank. Missing
+                                    applicable compensation becomes TBD. Currency can
+                                    be detected automatically or assigned using the
+                                    currency settings above.
                                 </p>
                             </div>
                         </div>
@@ -1042,11 +1308,16 @@ export default function ImportApplications({
                     {tooManyRows ? (
                         <div className="import-notice import-notice--warning">
                             <AlertTriangle size={17} />
+
                             <div>
-                                <strong>Too many rows for one import</strong>
+                                <strong>
+                                    Too many rows for one import
+                                </strong>
+
                                 <p>
-                                    This worksheet contains more than {MAX_IMPORT_ROWS} data
-                                    rows. Split it into smaller files and import them separately.
+                                    This worksheet contains more than {MAX_IMPORT_ROWS}
+                                    {" "}data rows. Split it into smaller files and
+                                    import them separately.
                                 </p>
                             </div>
                         </div>
@@ -1055,11 +1326,17 @@ export default function ImportApplications({
                             <div className="import-section-heading import-preview-heading">
                                 <div>
                                     <h3>Preview and select rows</h3>
+
                                     <p>
                                         {selectedValidRows.length} valid row
-                                        {selectedValidRows.length === 1 ? "" : "s"} selected ·{" "}
-                                        {invalidRowCount} row
-                                        {invalidRowCount === 1 ? "" : "s"} need review
+                                        {selectedValidRows.length === 1
+                                            ? ""
+                                            : "s"}{" "}
+                                        selected · {invalidRowCount} row
+                                        {invalidRowCount === 1
+                                            ? ""
+                                            : "s"}{" "}
+                                        need review
                                     </p>
                                 </div>
 
@@ -1067,14 +1344,19 @@ export default function ImportApplications({
                                     <button
                                         type="button"
                                         className="import-text-button"
-                                        onClick={() => setAllValidRows(true)}
+                                        onClick={() =>
+                                            setAllValidRows(true)
+                                        }
                                     >
                                         Select valid
                                     </button>
+
                                     <button
                                         type="button"
                                         className="import-text-button"
-                                        onClick={() => setAllValidRows(false)}
+                                        onClick={() =>
+                                            setAllValidRows(false)
+                                        }
                                     >
                                         Clear selection
                                     </button>
@@ -1092,6 +1374,7 @@ export default function ImportApplications({
                                             <th scope="col">Role</th>
                                             <th scope="col">Stipend</th>
                                             <th scope="col">CTC</th>
+                                            <th scope="col">Currency</th>
                                             <th scope="col">Status</th>
                                             <th scope="col">Stage</th>
                                             <th scope="col">Review</th>
@@ -1104,21 +1387,36 @@ export default function ImportApplications({
                                                 key={row.sourceRow}
                                                 row={row}
                                                 mapping={mapping}
-                                                selected={selectedRows.has(row.sourceRow)}
+                                                selected={selectedRows.has(
+                                                    row.sourceRow,
+                                                )}
                                                 ctcUnitChoice={
-                                                    ctcUnitChoices[row.sourceRow] ?? "unconfirmed"
+                                                    ctcUnitChoices[
+                                                    row.sourceRow
+                                                    ] ?? "unconfirmed"
                                                 }
                                                 roleTypeChoice={
-                                                    roleTypeChoices[row.sourceRow] ?? "unconfirmed"
+                                                    roleTypeChoices[
+                                                    row.sourceRow
+                                                    ] ?? "unconfirmed"
                                                 }
                                                 onSelect={(checked) =>
-                                                    setRowSelected(row.sourceRow, checked)
+                                                    setRowSelected(
+                                                        row.sourceRow,
+                                                        checked,
+                                                    )
                                                 }
                                                 onCtcUnitChange={(choice) =>
-                                                    setCtcUnitChoice(row.sourceRow, choice)
+                                                    setCtcUnitChoice(
+                                                        row.sourceRow,
+                                                        choice,
+                                                    )
                                                 }
                                                 onRoleTypeChange={(choice) =>
-                                                    setRoleTypeChoice(row.sourceRow, choice)
+                                                    setRoleTypeChoice(
+                                                        row.sourceRow,
+                                                        choice,
+                                                    )
                                                 }
                                             />
                                         ))}
