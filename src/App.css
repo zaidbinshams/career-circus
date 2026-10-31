@@ -1484,3 +1484,23 @@ select:focus-visible {
   font-size: 12px;
   line-height: 1.6;
 }
+
+
+/* Wider modal for spreadsheet mapping and preview */
+
+.modal-dialog.import-modal {
+  width: min(96vw, 1180px);
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+.modal-dialog.import-modal .import-wizard {
+  width: 100%;
+}
+
+@media (max-width: 600px) {
+  .modal-dialog.import-modal {
+    width: 100%;
+    max-height: 94vh;
+  }
+}

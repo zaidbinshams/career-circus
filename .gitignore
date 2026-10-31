@@ -23,5 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 
-# Personal project notes
+# Personal references
 /NOTES.md
+/placement-tracker.*

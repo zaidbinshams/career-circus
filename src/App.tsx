@@ -52,6 +52,10 @@ import {
 import { sampleApplications } from "./data/sampleApplications";
 import { formatCompensation } from "./utils/compensation";
 import ApplicationForm from "./components/ApplicationForm";
+import ImportApplications, {
+  type ImportCommitResult,
+} from "./components/ImportApplications";
+
 import "./App.css";
 
 type ThemeMode = "light" | "dark";
@@ -169,7 +173,7 @@ function savePreferences(preferences: SectionPreferences) {
       JSON.stringify(preferences),
     );
   } catch {
-    // Preferences remain usable during the current session.
+    // Preferences remain usable during this session.
   }
 }
 
@@ -205,7 +209,6 @@ function compareCompensation(
   const first = amountForSort(a);
   const second = amountForSort(b);
 
-  // Keep TBD and NA at the bottom in both directions.
   if (first === null && second === null) return 0;
   if (first === null) return 1;
   if (second === null) return -1;
@@ -294,7 +297,6 @@ function ApplicationCard({
           <h3>{application.companyName}</h3>
           <p className="role-name">{application.role}</p>
         </div>
-
         <time className="added-date" dateTime={application.createdAt}>
           {formatDate(application.createdAt)}
         </time>
@@ -302,13 +304,11 @@ function ApplicationCard({
 
       <div className="card-tags">
         <span className="type-pill">{formatLabel(application.roleType)}</span>
-
         <span
           className={`status-pill status-pill--${application.status ?? "unset"}`}
         >
           {formatLabel(application.status)}
         </span>
-
         <span className="stage-pill">
           {formatLabel(application.reachedStage)}
         </span>
@@ -365,6 +365,7 @@ function App() {
 
   const [showPreferences, setShowPreferences] = useState(false);
   const [showApplicationForm, setShowApplicationForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   const [editingApplication, setEditingApplication] =
     useState<Application | null>(null);
@@ -380,7 +381,6 @@ function App() {
   const [sortBy, setSortBy] = useState<SortOption>("date-desc");
   const [view, setView] = useState<ViewMode>("list");
 
-  // Save whenever an application is added, edited, or deleted.
   useEffect(() => {
     const saved = saveApplications(applications);
 
@@ -450,7 +450,7 @@ function App() {
       }
     });
 
-  // These metrics are provisional and will be revisited.
+  // Provisional overview metrics; these will be revisited later.
   const metrics = [
     {
       label: "Total applications",
@@ -559,8 +559,16 @@ function App() {
   }
 
   function openAddForm() {
+    setShowImport(false);
+    setShowPreferences(false);
     setEditingApplication(null);
     setShowApplicationForm(true);
+  }
+
+  function openImport() {
+    setShowApplicationForm(false);
+    setShowPreferences(false);
+    setShowImport(true);
   }
 
   function openEditForm(application: Application) {
@@ -580,9 +588,7 @@ function App() {
       ? updateValidatedApplication(editingApplication, draft)
       : createValidatedApplication(draft);
 
-    if (!result.success) {
-      return result.errors;
-    }
+    if (!result.success) return result.errors;
 
     if (editingApplication) {
       setApplications((current) =>
@@ -603,6 +609,51 @@ function App() {
     setSearch("");
 
     closeApplicationForm();
+  }
+
+  function handleImportApplications(
+    drafts: ApplicationDraft[],
+  ): ImportCommitResult {
+    const created: Application[] = [];
+    const errors: string[] = [];
+
+    drafts.forEach((draft, index) => {
+      const result = createValidatedApplication(draft);
+
+      if (result.success) {
+        created.push(result.application);
+      } else {
+        errors.push(
+          `Selected import row ${index + 1}: ${result.errors.join(" ")}`,
+        );
+      }
+    });
+
+    if (created.length > 0) {
+      setApplications((current) => [...current, ...created]);
+      setActiveSection(created[0].section);
+      setRoleFilter("all");
+      setStatusFilter("all");
+      setStageFilter("all");
+      setSearch("");
+    }
+
+    return {
+      importedCount: created.length,
+      errors,
+    };
+  }
+
+  function openManualEntryForSkipped(section: ApplicationSection) {
+    setActiveSection(
+      visibleSections.includes(section)
+        ? section
+        : visibleSections[0] ?? "college-placement",
+    );
+
+    setShowImport(false);
+    setEditingApplication(null);
+    setShowApplicationForm(true);
   }
 
   function confirmDeleteApplication() {
@@ -637,10 +688,13 @@ function App() {
 
         <nav className="sidebar-nav" aria-label="Main navigation">
           <button
-            className={`nav-item ${!showPreferences ? "nav-item--active" : ""
+            className={`nav-item ${!showPreferences && !showImport ? "nav-item--active" : ""
               }`}
             type="button"
-            onClick={() => setShowPreferences(false)}
+            onClick={() => {
+              setShowPreferences(false);
+              setShowImport(false);
+            }}
           >
             <LayoutDashboard size={18} />
             <span>Applications</span>
@@ -657,10 +711,10 @@ function App() {
           </button>
 
           <button
-            className="nav-item nav-item--disabled"
+            className={`nav-item ${showImport ? "nav-item--active" : ""}`}
             type="button"
-            disabled
-            title="Excel import will be added later"
+            aria-pressed={showImport}
+            onClick={openImport}
           >
             <Upload size={18} />
             <span>Import</span>
@@ -671,7 +725,10 @@ function App() {
               }`}
             type="button"
             aria-expanded={showPreferences}
-            onClick={() => setShowPreferences((current) => !current)}
+            onClick={() => {
+              setShowImport(false);
+              setShowPreferences((current) => !current);
+            }}
           >
             <Settings size={18} />
             <span>Preferences</span>
@@ -689,7 +746,6 @@ function App() {
                 <h2>Preferences</h2>
                 <p>Choose which sections appear on your dashboard.</p>
               </div>
-
               <button
                 type="button"
                 className="preferences-close"
@@ -1097,6 +1153,32 @@ function App() {
         </div>
       )}
 
+      {showImport && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowImport(false);
+            }
+          }}
+        >
+          <div
+            className="modal-dialog import-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Import applications"
+          >
+            <ImportApplications
+              initialSection={activeSection}
+              availableSections={visibleSections}
+              onImport={handleImportApplications}
+              onCancel={() => setShowImport(false)}
+              onAddSkippedManually={openManualEntryForSkipped}
+            />
+          </div>
+        </div>
+      )}
+
       {applicationToDelete && (
         <div
           className="modal-backdrop"
@@ -1118,7 +1200,6 @@ function App() {
             </div>
 
             <h2 id="delete-dialog-title">Delete application?</h2>
-
             <p id="delete-dialog-description">
               This will remove the application for{" "}
               <strong>{applicationToDelete.companyName}</strong> from the
@@ -1133,7 +1214,6 @@ function App() {
               >
                 Cancel
               </button>
-
               <button
                 type="button"
                 className="button button--primary"
