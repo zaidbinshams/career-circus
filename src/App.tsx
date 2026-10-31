@@ -1,9 +1,9 @@
-
 import { useEffect, useState } from "react";
 import {
   Award,
   BarChart3,
   Briefcase,
+  Download,
   FileText,
   Grid2X2,
   LayoutDashboard,
@@ -55,6 +55,7 @@ import ApplicationForm from "./components/ApplicationForm";
 import ImportApplications, {
   type ImportCommitResult,
 } from "./components/ImportApplications";
+import ExportApplications from "./components/ExportApplications";
 
 import "./App.css";
 
@@ -366,6 +367,7 @@ function App() {
   const [showPreferences, setShowPreferences] = useState(false);
   const [showApplicationForm, setShowApplicationForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showExport, setShowExport] = useState(false);
 
   const [editingApplication, setEditingApplication] =
     useState<Application | null>(null);
@@ -560,6 +562,7 @@ function App() {
 
   function openAddForm() {
     setShowImport(false);
+    setShowExport(false);
     setShowPreferences(false);
     setEditingApplication(null);
     setShowApplicationForm(true);
@@ -568,7 +571,15 @@ function App() {
   function openImport() {
     setShowApplicationForm(false);
     setShowPreferences(false);
+    setShowExport(false);
     setShowImport(true);
+  }
+
+  function openExport() {
+    setShowApplicationForm(false);
+    setShowPreferences(false);
+    setShowImport(false);
+    setShowExport(true);
   }
 
   function openEditForm(application: Application) {
@@ -652,6 +663,7 @@ function App() {
     );
 
     setShowImport(false);
+    setShowExport(false);
     setEditingApplication(null);
     setShowApplicationForm(true);
   }
@@ -688,12 +700,15 @@ function App() {
 
         <nav className="sidebar-nav" aria-label="Main navigation">
           <button
-            className={`nav-item ${!showPreferences && !showImport ? "nav-item--active" : ""
+            className={`nav-item ${!showPreferences && !showImport && !showExport
+                ? "nav-item--active"
+                : ""
               }`}
             type="button"
             onClick={() => {
               setShowPreferences(false);
               setShowImport(false);
+              setShowExport(false);
             }}
           >
             <LayoutDashboard size={18} />
@@ -721,12 +736,23 @@ function App() {
           </button>
 
           <button
+            className={`nav-item ${showExport ? "nav-item--active" : ""}`}
+            type="button"
+            aria-pressed={showExport}
+            onClick={openExport}
+          >
+            <Download size={18} />
+            <span>Export</span>
+          </button>
+
+          <button
             className={`nav-item ${showPreferences ? "nav-item--active" : ""
               }`}
             type="button"
             aria-expanded={showPreferences}
             onClick={() => {
               setShowImport(false);
+              setShowExport(false);
               setShowPreferences((current) => !current);
             }}
           >
@@ -1174,6 +1200,30 @@ function App() {
               onImport={handleImportApplications}
               onCancel={() => setShowImport(false)}
               onAddSkippedManually={openManualEntryForSkipped}
+            />
+          </div>
+        </div>
+      )}
+
+      {showExport && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowExport(false);
+            }
+          }}
+        >
+          <div
+            className="modal-dialog export-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Export applications"
+          >
+            <ExportApplications
+              applications={applications}
+              initialSection={activeSection}
+              onCancel={() => setShowExport(false)}
             />
           </div>
         </div>
