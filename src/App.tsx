@@ -56,6 +56,7 @@ import ImportApplications, {
   type ImportCommitResult,
 } from "./components/ImportApplications";
 import ExportApplications from "./components/ExportApplications";
+import AnalyticsDashboard from "./components/AnalyticsDashboard";
 
 import "./App.css";
 
@@ -368,6 +369,7 @@ function App() {
   const [showApplicationForm, setShowApplicationForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showExport, setShowExport] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
 
   const [editingApplication, setEditingApplication] =
     useState<Application | null>(null);
@@ -563,6 +565,7 @@ function App() {
   function openAddForm() {
     setShowImport(false);
     setShowExport(false);
+    setShowAnalytics(false);
     setShowPreferences(false);
     setEditingApplication(null);
     setShowApplicationForm(true);
@@ -572,6 +575,7 @@ function App() {
     setShowApplicationForm(false);
     setShowPreferences(false);
     setShowExport(false);
+    setShowAnalytics(false);
     setShowImport(true);
   }
 
@@ -579,7 +583,16 @@ function App() {
     setShowApplicationForm(false);
     setShowPreferences(false);
     setShowImport(false);
+    setShowAnalytics(false);
     setShowExport(true);
+  }
+
+  function openAnalytics() {
+    setShowApplicationForm(false);
+    setShowPreferences(false);
+    setShowImport(false);
+    setShowExport(false);
+    setShowAnalytics(true);
   }
 
   function openEditForm(application: Application) {
@@ -664,6 +677,7 @@ function App() {
 
     setShowImport(false);
     setShowExport(false);
+    setShowAnalytics(false);
     setEditingApplication(null);
     setShowApplicationForm(true);
   }
@@ -700,7 +714,10 @@ function App() {
 
         <nav className="sidebar-nav" aria-label="Main navigation">
           <button
-            className={`nav-item ${!showPreferences && !showImport && !showExport
+            className={`nav-item ${!showPreferences &&
+                !showImport &&
+                !showExport &&
+                !showAnalytics
                 ? "nav-item--active"
                 : ""
               }`}
@@ -709,6 +726,7 @@ function App() {
               setShowPreferences(false);
               setShowImport(false);
               setShowExport(false);
+              setShowAnalytics(false);
             }}
           >
             <LayoutDashboard size={18} />
@@ -716,10 +734,11 @@ function App() {
           </button>
 
           <button
-            className="nav-item nav-item--disabled"
+            className={`nav-item ${showAnalytics ? "nav-item--active" : ""
+              }`}
             type="button"
-            disabled
-            title="Analytics will be added later"
+            aria-pressed={showAnalytics}
+            onClick={openAnalytics}
           >
             <BarChart3 size={18} />
             <span>Analytics</span>
@@ -753,6 +772,7 @@ function App() {
             onClick={() => {
               setShowImport(false);
               setShowExport(false);
+              setShowAnalytics(false);
               setShowPreferences((current) => !current);
             }}
           >
@@ -837,9 +857,11 @@ function App() {
         <header className="page-heading">
           <div>
             <p className="eyebrow">YOUR DASHBOARD</p>
-            <h1>Applications</h1>
+            <h1>{showAnalytics ? "Analytics" : "Applications"}</h1>
             <p className="page-description">
-              Keep track of your opportunities and their progress.
+              {showAnalytics
+                ? "Understand your application activity and progress."
+                : "Keep track of your opportunities and their progress."}
             </p>
           </div>
 
@@ -861,293 +883,334 @@ function App() {
               <Moon size={16} />
             </button>
 
-            <button
-              className="button button--primary"
-              type="button"
-              onClick={openAddForm}
-            >
-              <Plus size={17} />
-              <span>Add application</span>
-            </button>
+            {showAnalytics ? (
+              <button
+                className="button button--secondary"
+                type="button"
+                onClick={() => setShowAnalytics(false)}
+              >
+                <LayoutDashboard size={16} />
+                <span>Applications</span>
+              </button>
+            ) : (
+              <button
+                className="button button--primary"
+                type="button"
+                onClick={openAddForm}
+              >
+                <Plus size={17} />
+                <span>Add application</span>
+              </button>
+            )}
           </div>
         </header>
 
-        {storageWarning && (
-          <p className="storage-warning" role="status">
-            {storageWarning}
-          </p>
-        )}
-
-        <nav className="section-tabs" aria-label="Application sections">
-          {visibleSections.map((section) => (
-            <button
-              key={section}
-              type="button"
-              className={`section-tab ${activeSection === section ? "section-tab--active" : ""
-                }`}
-              aria-pressed={activeSection === section}
-              onClick={() => changeSection(section)}
-            >
-              {sections[section].label}
-            </button>
-          ))}
-        </nav>
-
-        <section className="metrics-grid" aria-label="Application summary">
-          {metrics.map((metric) => (
-            <MetricCard key={metric.label} {...metric} />
-          ))}
-        </section>
-
-        <section className="applications-panel">
-          <div className="panel-heading">
-            <div>
-              <h2>{sections[activeSection].label}</h2>
-              <p>{sections[activeSection].description}</p>
-            </div>
-            <span className="record-count">
-              {filteredApplications.length}{" "}
-              {filteredApplications.length === 1
-                ? "application"
-                : "applications"}
-            </span>
-          </div>
-
-          <div className="toolbar">
-            <label className="search-field">
-              <Search size={17} aria-hidden="true" />
-              <span className="sr-only">Search companies or roles</span>
-              <input
-                type="search"
-                placeholder="Search companies or roles..."
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
-            </label>
-
-            <label className="select-field">
-              <span className="sr-only">Filter by role type</span>
-              <select
-                value={roleFilter}
-                onChange={(event) =>
-                  setRoleFilter(event.target.value as RoleType | "all")
-                }
-              >
-                <option value="all">All role types</option>
-                {ROLE_TYPES.map((roleType) => (
-                  <option key={roleType} value={roleType}>
-                    {formatLabel(roleType)}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="select-field">
-              <span className="sr-only">Filter by status</span>
-              <select
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
-              >
-                <option value="all">All statuses</option>
-                {statusOptions.map((status) => (
-                  <option key={status} value={status}>
-                    {formatLabel(status)}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="select-field">
-              <span className="sr-only">Filter by stage</span>
-              <select
-                value={stageFilter}
-                onChange={(event) => setStageFilter(event.target.value)}
-              >
-                <option value="all">All stages</option>
-                {stageOptions.map((stage) => (
-                  <option key={stage} value={stage}>
-                    {formatLabel(stage)}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="select-field sort-field">
-              <SlidersHorizontal size={15} aria-hidden="true" />
-              <span className="sr-only">Sort applications</span>
-              <select
-                value={sortBy}
-                onChange={(event) =>
-                  setSortBy(event.target.value as SortOption)
-                }
-              >
-                <option value="date-desc">Newest added</option>
-                <option value="date-asc">Oldest added</option>
-                <option value="company-asc">Company A–Z</option>
-                <option value="company-desc">Company Z–A</option>
-                <option value="stipend-asc">Stipend: low to high</option>
-                <option value="stipend-desc">Stipend: high to low</option>
-                <option value="ctc-asc">CTC: low to high</option>
-                <option value="ctc-desc">CTC: high to low</option>
-              </select>
-            </label>
-
-            <div className="view-switch" aria-label="Application view">
-              <button
-                type="button"
-                className={`view-button ${view === "list" ? "view-button--active" : ""
-                  }`}
-                aria-label="List view"
-                aria-pressed={view === "list"}
-                onClick={() => setView("list")}
-              >
-                <List size={17} />
-              </button>
-
-              <button
-                type="button"
-                className={`view-button ${view === "grid" ? "view-button--active" : ""
-                  }`}
-                aria-label="Grid view"
-                aria-pressed={view === "grid"}
-                onClick={() => setView("grid")}
-              >
-                <Grid2X2 size={16} />
-              </button>
-            </div>
-          </div>
-
-          {hasActiveFilters && (
-            <div className="filter-summary">
-              <span>
-                Showing {filteredApplications.length} of{" "}
-                {sectionApplications.length} applications
-              </span>
-              <button type="button" onClick={resetFilters}>
-                Clear filters
-              </button>
-            </div>
-          )}
-
-          {filteredApplications.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-state-icon">
-                <Briefcase size={25} strokeWidth={1.6} />
-              </div>
-              <h3>
-                {sectionApplications.length === 0
-                  ? "No applications yet"
-                  : "No matching applications"}
-              </h3>
-              <p>
-                {sectionApplications.length === 0
-                  ? "Applications you add will appear here."
-                  : "Try changing your search or filters."}
+        {showAnalytics ? (
+          <AnalyticsDashboard applications={applications} />
+        ) : (
+          <>
+            {storageWarning && (
+              <p className="storage-warning" role="status">
+                {storageWarning}
               </p>
-              {hasActiveFilters && (
-                <button
-                  className="button button--secondary"
-                  type="button"
-                  onClick={resetFilters}
-                >
-                  Clear filters
-                </button>
-              )}
-            </div>
-          ) : view === "list" ? (
-            <div className="table-scroll">
-              <table className="applications-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Company / Role</th>
-                    <th scope="col">Role type</th>
-                    <th scope="col">Stipend</th>
-                    <th scope="col">CTC</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Stage</th>
-                    <th scope="col">Added</th>
-                    <th scope="col">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredApplications.map((application) => (
-                    <tr key={application.id}>
-                      <td>
-                        <CompanyCell application={application} />
-                      </td>
-                      <td>
-                        <span className="type-pill">
-                          {formatLabel(application.roleType)}
-                        </span>
-                      </td>
-                      <td className="compensation-cell">
-                        {formatCompensation(
-                          application.stipend,
-                          "stipend",
-                          application.currency,
-                        )}
-                      </td>
-                      <td className="compensation-cell">
-                        {formatCompensation(
-                          application.ctc,
-                          "ctc",
-                          application.currency,
-                        )}
-                      </td>
-                      <td>
-                        <span
-                          className={`status-pill status-pill--${application.status ?? "unset"}`}
-                        >
-                          {formatLabel(application.status)}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="stage-pill">
-                          {formatLabel(application.reachedStage)}
-                        </span>
-                      </td>
-                      <td>
-                        <time
-                          className="added-date"
-                          dateTime={application.createdAt}
-                        >
-                          {formatDate(application.createdAt)}
-                        </time>
-                      </td>
-                      <td>
-                        <ApplicationActions
-                          application={application}
-                          onEdit={openEditForm}
-                          onDelete={setApplicationToDelete}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="application-grid">
-              {filteredApplications.map((application) => (
-                <ApplicationCard
-                  key={application.id}
-                  application={application}
-                  onEdit={openEditForm}
-                  onDelete={setApplicationToDelete}
-                />
-              ))}
-            </div>
-          )}
+            )}
 
-          <footer className="panel-footer">
-            <span>
-              {storageWarning
-                ? "Local saving unavailable"
-                : "Saved locally in this browser"}
-            </span>
-            <span>Not synced across devices</span>
-          </footer>
-        </section>
+            <nav className="section-tabs" aria-label="Application sections">
+              {visibleSections.map((section) => (
+                <button
+                  key={section}
+                  type="button"
+                  className={`section-tab ${activeSection === section
+                      ? "section-tab--active"
+                      : ""
+                    }`}
+                  aria-pressed={activeSection === section}
+                  onClick={() => changeSection(section)}
+                >
+                  {sections[section].label}
+                </button>
+              ))}
+            </nav>
+
+            <section
+              className="metrics-grid"
+              aria-label="Application summary"
+            >
+              {metrics.map((metric) => (
+                <MetricCard key={metric.label} {...metric} />
+              ))}
+            </section>
+
+            <section className="applications-panel">
+              <div className="panel-heading">
+                <div>
+                  <h2>{sections[activeSection].label}</h2>
+                  <p>{sections[activeSection].description}</p>
+                </div>
+                <span className="record-count">
+                  {filteredApplications.length}{" "}
+                  {filteredApplications.length === 1
+                    ? "application"
+                    : "applications"}
+                </span>
+              </div>
+
+              <div className="toolbar">
+                <label className="search-field">
+                  <Search size={17} aria-hidden="true" />
+                  <span className="sr-only">
+                    Search companies or roles
+                  </span>
+                  <input
+                    type="search"
+                    placeholder="Search companies or roles..."
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                  />
+                </label>
+
+                <label className="select-field">
+                  <span className="sr-only">Filter by role type</span>
+                  <select
+                    value={roleFilter}
+                    onChange={(event) =>
+                      setRoleFilter(
+                        event.target.value as RoleType | "all",
+                      )
+                    }
+                  >
+                    <option value="all">All role types</option>
+                    {ROLE_TYPES.map((roleType) => (
+                      <option key={roleType} value={roleType}>
+                        {formatLabel(roleType)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="select-field">
+                  <span className="sr-only">Filter by status</span>
+                  <select
+                    value={statusFilter}
+                    onChange={(event) =>
+                      setStatusFilter(event.target.value)
+                    }
+                  >
+                    <option value="all">All statuses</option>
+                    {statusOptions.map((status) => (
+                      <option key={status} value={status}>
+                        {formatLabel(status)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="select-field">
+                  <span className="sr-only">Filter by stage</span>
+                  <select
+                    value={stageFilter}
+                    onChange={(event) =>
+                      setStageFilter(event.target.value)
+                    }
+                  >
+                    <option value="all">All stages</option>
+                    {stageOptions.map((stage) => (
+                      <option key={stage} value={stage}>
+                        {formatLabel(stage)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="select-field sort-field">
+                  <SlidersHorizontal
+                    size={15}
+                    aria-hidden="true"
+                  />
+                  <span className="sr-only">Sort applications</span>
+                  <select
+                    value={sortBy}
+                    onChange={(event) =>
+                      setSortBy(event.target.value as SortOption)
+                    }
+                  >
+                    <option value="date-desc">Newest added</option>
+                    <option value="date-asc">Oldest added</option>
+                    <option value="company-asc">Company A–Z</option>
+                    <option value="company-desc">Company Z–A</option>
+                    <option value="stipend-asc">
+                      Stipend: low to high
+                    </option>
+                    <option value="stipend-desc">
+                      Stipend: high to low
+                    </option>
+                    <option value="ctc-asc">CTC: low to high</option>
+                    <option value="ctc-desc">CTC: high to low</option>
+                  </select>
+                </label>
+
+                <div
+                  className="view-switch"
+                  aria-label="Application view"
+                >
+                  <button
+                    type="button"
+                    className={`view-button ${view === "list" ? "view-button--active" : ""
+                      }`}
+                    aria-label="List view"
+                    aria-pressed={view === "list"}
+                    onClick={() => setView("list")}
+                  >
+                    <List size={17} />
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`view-button ${view === "grid" ? "view-button--active" : ""
+                      }`}
+                    aria-label="Grid view"
+                    aria-pressed={view === "grid"}
+                    onClick={() => setView("grid")}
+                  >
+                    <Grid2X2 size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {hasActiveFilters && (
+                <div className="filter-summary">
+                  <span>
+                    Showing {filteredApplications.length} of{" "}
+                    {sectionApplications.length} applications
+                  </span>
+                  <button type="button" onClick={resetFilters}>
+                    Clear filters
+                  </button>
+                </div>
+              )}
+
+              {filteredApplications.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-state-icon">
+                    <Briefcase size={25} strokeWidth={1.6} />
+                  </div>
+                  <h3>
+                    {sectionApplications.length === 0
+                      ? "No applications yet"
+                      : "No matching applications"}
+                  </h3>
+                  <p>
+                    {sectionApplications.length === 0
+                      ? "Applications you add will appear here."
+                      : "Try changing your search or filters."}
+                  </p>
+                  {hasActiveFilters && (
+                    <button
+                      className="button button--secondary"
+                      type="button"
+                      onClick={resetFilters}
+                    >
+                      Clear filters
+                    </button>
+                  )}
+                </div>
+              ) : view === "list" ? (
+                <div className="table-scroll">
+                  <table className="applications-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Company / Role</th>
+                        <th scope="col">Role type</th>
+                        <th scope="col">Stipend</th>
+                        <th scope="col">CTC</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Stage</th>
+                        <th scope="col">Added</th>
+                        <th scope="col">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredApplications.map((application) => (
+                        <tr key={application.id}>
+                          <td>
+                            <CompanyCell application={application} />
+                          </td>
+                          <td>
+                            <span className="type-pill">
+                              {formatLabel(application.roleType)}
+                            </span>
+                          </td>
+                          <td className="compensation-cell">
+                            {formatCompensation(
+                              application.stipend,
+                              "stipend",
+                              application.currency,
+                            )}
+                          </td>
+                          <td className="compensation-cell">
+                            {formatCompensation(
+                              application.ctc,
+                              "ctc",
+                              application.currency,
+                            )}
+                          </td>
+                          <td>
+                            <span
+                              className={`status-pill status-pill--${application.status ?? "unset"
+                                }`}
+                            >
+                              {formatLabel(application.status)}
+                            </span>
+                          </td>
+                          <td>
+                            <span className="stage-pill">
+                              {formatLabel(application.reachedStage)}
+                            </span>
+                          </td>
+                          <td>
+                            <time
+                              className="added-date"
+                              dateTime={application.createdAt}
+                            >
+                              {formatDate(application.createdAt)}
+                            </time>
+                          </td>
+                          <td>
+                            <ApplicationActions
+                              application={application}
+                              onEdit={openEditForm}
+                              onDelete={setApplicationToDelete}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="application-grid">
+                  {filteredApplications.map((application) => (
+                    <ApplicationCard
+                      key={application.id}
+                      application={application}
+                      onEdit={openEditForm}
+                      onDelete={setApplicationToDelete}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <footer className="panel-footer">
+                <span>
+                  {storageWarning
+                    ? "Local saving unavailable"
+                    : "Saved locally in this browser"}
+                </span>
+                <span>Not synced across devices</span>
+              </footer>
+            </section>
+          </>
+        )}
       </main>
 
       {showApplicationForm && (
